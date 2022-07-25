@@ -2,6 +2,7 @@
 Created on Aug 18, 2021
 
 @author: xiaosonh
+@author: greatv(wang xin)
 '''
 import os
 import sys
@@ -33,8 +34,10 @@ class Labelme2YOLO(object):
         
         for yolo_path in (os.path.join(self._label_dir_path + 'train/'), 
                           os.path.join(self._label_dir_path + 'val/'),
+                          os.path.join(self._label_dir_path + 'test/'),
                           os.path.join(self._image_dir_path + 'train/'), 
-                          os.path.join(self._image_dir_path + 'val/')):
+                          os.path.join(self._image_dir_path + 'val/'),
+                          os.path.join(self._image_dir_path + 'test/')):
             if os.path.exists(yolo_path):
                 shutil.rmtree(yolo_path)
             
@@ -53,8 +56,8 @@ class Labelme2YOLO(object):
         return OrderedDict([(label, label_id) \
                             for label_id, label in enumerate(label_set)])
     
-    def _train_test_split(self, folders, json_names, val_size):
-        if len(folders) > 0 and 'train' in folders and 'val' in folders:
+    def _train_test_split(self, folders, json_names, val_size, test_size):
+        if len(folders) > 0 and 'train' in folders and 'val' in folders and 'test' in folders:
             train_folder = os.path.join(self._json_dir, 'train/')
             train_json_names = [train_sample_name + '.json' \
                                 for train_sample_name in os.listdir(train_folder) \
@@ -65,29 +68,37 @@ class Labelme2YOLO(object):
                               for val_sample_name in os.listdir(val_folder) \
                               if os.path.isdir(os.path.join(val_folder, val_sample_name))]
             
-            return train_json_names, val_json_names
+            test_folder = os.path.join(self._json_dir, 'test/')
+            test_json_names = [test_sample_name + '.json' \
+                              for test_sample_name in os.listdir(test_folder) \
+                              if os.path.isdir(os.path.join(test_folder, test_sample_name))]
+            
+            return train_json_names, val_json_names, test_json_names
         
         train_idxs, val_idxs = train_test_split(range(len(json_names)), 
                                                 test_size=val_size)
+        tmp_train_len = len(train_idxs)
+        train_idxs, test_idxs = train_test_split(range(tmp_train_len), test_size=test_size / (1 - val_size))
         train_json_names = [json_names[train_idx] for train_idx in train_idxs]
         val_json_names = [json_names[val_idx] for val_idx in val_idxs]
+        test_json_names = [json_names[test_idx] for test_idx in test_idxs]
         
-        return train_json_names, val_json_names
+        return train_json_names, val_json_names, test_json_names
     
-    def convert(self, val_size):
+    def convert(self, val_size, test_size):
         json_names = [file_name for file_name in os.listdir(self._json_dir) \
                       if os.path.isfile(os.path.join(self._json_dir, file_name)) and \
                       file_name.endswith('.json')]
         folders =  [file_name for file_name in os.listdir(self._json_dir) \
                     if os.path.isdir(os.path.join(self._json_dir, file_name))]
-        train_json_names, val_json_names = self._train_test_split(folders, json_names, val_size)
+        train_json_names, val_json_names, test_json_names = self._train_test_split(folders, json_names, val_size, test_size)
         
         self._make_train_val_dir()
     
         # convert labelme object to yolo format object, and save them to files
         # also get image from labelme json file and save them under images folder
-        for target_dir, json_names in zip(('train/', 'val/'), 
-                                          (train_json_names, val_json_names)):
+        for target_dir, json_names in zip(('train/', 'val/', 'test/'), 
+                                          (train_json_names, val_json_names, test_json_names)):
             for json_name in json_names:
                 json_path = os.path.join(self._json_dir, json_name)
                 json_data = json.load(open(json_path))
@@ -204,6 +215,8 @@ class Labelme2YOLO(object):
                             os.path.join(self._image_dir_path, 'train/'))
             yaml_file.write('val: %s\n\n' % \
                             os.path.join(self._image_dir_path, 'val/'))
+            yaml_file.write('test: %s\n\n' % \
+                            os.path.join(self._image_dir_path, 'test/'))
             yaml_file.write('nc: %i\n\n' % len(self._label_id_map))
             
             names_str = ''
@@ -219,13 +232,15 @@ if __name__ == '__main__':
                         help='Please input the path of the labelme json files.')
     parser.add_argument('--val_size',type=float, nargs='?', default=None,
                         help='Please input the validation dataset size, for example 0.1 ')
+    parser.add_argument('--test_size',type=float, nargs='?', default=0.0,
+                        help='Please input the validation dataset size, for example 0.1 ')
     parser.add_argument('--json_name',type=str, nargs='?', default=None,
                         help='If you put json name, it would convert only one json file to YOLO.')
     args = parser.parse_args(sys.argv[1:])
          
     convertor = Labelme2YOLO(args.json_dir)
     if args.json_name is None:
-        convertor.convert(val_size=args.val_size)
+        convertor.convert(val_size=args.val_size, test_size=args.test_size)
     else:
         convertor.convert_one(args.json_name)
     

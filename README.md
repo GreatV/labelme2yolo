@@ -8,6 +8,8 @@ If you've already marked your segmentation dataset by LabelMe, it's easy to use 
 
 **--val_size (Optional)** Validation dataset size, for example 0.2 means 20% for validation and 80% for training.
 
+**--test_size (Optional)** Validation dataset size, for example 0.2 means 20% for validation and 80% for training.
+
 **--json_name (Optional)** Convert single LabelMe JSON file.
 
 ## How to Use
