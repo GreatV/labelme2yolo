@@ -6,23 +6,25 @@ If you've already marked your segmentation dataset by LabelMe, it's easy to use 
 ## Parameters Explain
 **--json_dir** LabelMe JSON files folder path.
 
-**--val_size (Optional)** Validation dataset size, for example 0.2 means 20% for validation and 80% for training.
+**--val_size (Optional)** Validation dataset size, for example 0.2 means 20% for validation.
 
-**--test_size (Optional)** Validation dataset size, for example 0.2 means 20% for validation and 80% for training.
+**--test_size (Optional)** Test dataset size, for example 0.2 means 20% for Test.
 
 **--json_name (Optional)** Convert single LabelMe JSON file.
 
 ## How to Use
 
-### 1. Convert JSON files, split training and validation dataset by --val_size
+### 1. Convert JSON files, split training, validation and test dataset by --val_size and --test_size
 Put all LabelMe JSON files under **labelme_json_dir**, and run this python command.
 ```bash
-python labelme2yolo.py --json_dir /home/username/labelme_json_dir/ --val_size 0.2
+python labelme2yolo.py --json_dir /home/username/labelme_json_dir/ --val_size 0.15 --test_size 0.15
 ```
 Script would generate YOLO format dataset labels and images under different folders, for example,
 ```bash
 /home/username/labelme_json_dir/YOLODataset/labels/train/
+/home/username/labelme_json_dir/YOLODataset/labels/test/
 /home/username/labelme_json_dir/YOLODataset/labels/val/
+/home/username/labelme_json_dir/YOLODataset/images/test/
 /home/username/labelme_json_dir/YOLODataset/images/train/
 /home/username/labelme_json_dir/YOLODataset/images/val/
 
