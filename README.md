@@ -26,8 +26,8 @@ Script would generate YOLO format dataset labels and images under different fold
 /home/username/labelme_json_dir/YOLODataset/labels/train/
 /home/username/labelme_json_dir/YOLODataset/labels/test/
 /home/username/labelme_json_dir/YOLODataset/labels/val/
-/home/username/labelme_json_dir/YOLODataset/images/test/
 /home/username/labelme_json_dir/YOLODataset/images/train/
+/home/username/labelme_json_dir/YOLODataset/images/test/
 /home/username/labelme_json_dir/YOLODataset/images/val/
 
 /home/username/labelme_json_dir/YOLODataset/dataset.yaml
