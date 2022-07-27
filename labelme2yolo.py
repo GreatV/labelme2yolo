@@ -10,6 +10,7 @@ import argparse
 import shutil
 import math
 from collections import OrderedDict
+from multiprocessing import Pool
 
 import json
 import cv2
@@ -101,25 +102,31 @@ class Labelme2YOLO(object):
         # also get image from labelme json file and save them under images folder
         for target_dir, json_names in zip(('train/', 'val/', 'test/'), 
                                           (train_json_names, val_json_names, test_json_names)):
+            pool = Pool(os.cpu_count() - 1)
             for json_name in json_names:
-                json_path = os.path.join(self._json_dir, json_name)
-                json_data = json.load(open(json_path))
+                pool.apply_async(self.covert_json_to_text, args=(target_dir, json_name))
+            pool.close()
+            pool.join()
+        
+        print('Generating dataset.yaml file ...')
+        self._save_dataset_yaml()
+
+    def covert_json_to_text(self, target_dir, json_name):
+        json_path = os.path.join(self._json_dir, json_name)
+        json_data = json.load(open(json_path))
                 
-                print('Converting %s for %s ...' % (json_name, target_dir.replace('/', '')))
+        print('Converting %s for %s ...' % (json_name, target_dir.replace('/', '')))
                 
-                img_path = self._save_yolo_image(json_data, 
+        img_path = self._save_yolo_image(json_data, 
                                                  json_name, 
                                                  self._image_dir_path, 
                                                  target_dir)
                     
-                yolo_obj_list = self._get_yolo_object_list(json_data, img_path)
-                self._save_yolo_label(json_name, 
+        yolo_obj_list = self._get_yolo_object_list(json_data, img_path)
+        self._save_yolo_label(json_name, 
                                       self._label_dir_path, 
                                       target_dir, 
                                       yolo_obj_list)
-        
-        print('Generating dataset.yaml file ...')
-        self._save_dataset_yaml()
                 
     def convert_one(self, json_name):
         json_path = os.path.join(self._json_dir, json_name)
