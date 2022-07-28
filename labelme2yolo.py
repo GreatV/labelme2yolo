@@ -2,23 +2,126 @@
 Created on Aug 18, 2021
 
 @author: xiaosonh
-@author: greatv(wang xin)
+@author: GreatV(Wang Xin)
 '''
 import os
 import sys
 import argparse
 import shutil
 import math
+import base64
+import io
 from collections import OrderedDict
 from multiprocessing import Pool
-
 import json
-import cv2
-import PIL.Image
-  
-from sklearn.model_selection import train_test_split
-from labelme import utils
 
+import cv2
+from sklearn.model_selection import train_test_split
+import numpy as np
+import PIL.ExifTags
+import PIL.Image
+import PIL.ImageOps
+
+
+# copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
+def img_data_to_pil(img_data):
+    f = io.BytesIO()
+    f.write(img_data)
+    img_pil = PIL.Image.open(f)
+    return img_pil
+
+
+# copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
+def img_data_to_arr(img_data):
+    img_pil = img_data_to_pil(img_data)
+    img_arr = np.array(img_pil)
+    return img_arr
+
+
+# copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
+def img_b64_to_arr(img_b64):
+    img_data = base64.b64decode(img_b64)
+    img_arr = img_data_to_arr(img_data)
+    return img_arr
+
+
+# copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
+def img_pil_to_data(img_pil):
+    f = io.BytesIO()
+    img_pil.save(f, format="PNG")
+    img_data = f.getvalue()
+    return img_data
+
+
+# copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
+def img_arr_to_b64(img_arr):
+    img_pil = PIL.Image.fromarray(img_arr)
+    f = io.BytesIO()
+    img_pil.save(f, format="PNG")
+    img_bin = f.getvalue()
+    if hasattr(base64, "encodebytes"):
+        img_b64 = base64.encodebytes(img_bin)
+    else:
+        img_b64 = base64.encodestring(img_bin)
+    return img_b64
+
+
+# copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
+def img_data_to_png_data(img_data):
+    with io.BytesIO() as f:
+        f.write(img_data)
+        img = PIL.Image.open(f)
+
+        with io.BytesIO() as f:
+            img.save(f, "PNG")
+            f.seek(0)
+            return f.read()
+
+
+# copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
+def apply_exif_orientation(image):
+    try:
+        exif = image._getexif()
+    except AttributeError:
+        exif = None
+
+    if exif is None:
+        return image
+
+    exif = {
+        PIL.ExifTags.TAGS[k]: v
+        for k, v in exif.items()
+        if k in PIL.ExifTags.TAGS
+    }
+
+    orientation = exif.get("Orientation", None)
+
+    if orientation == 1:
+        # do nothing
+        return image
+    elif orientation == 2:
+        # left-to-right mirror
+        return PIL.ImageOps.mirror(image)
+    elif orientation == 3:
+        # rotate 180
+        return image.transpose(PIL.Image.ROTATE_180)
+    elif orientation == 4:
+        # top-to-bottom mirror
+        return PIL.ImageOps.flip(image)
+    elif orientation == 5:
+        # top-to-left mirror
+        return PIL.ImageOps.mirror(image.transpose(PIL.Image.ROTATE_270))
+    elif orientation == 6:
+        # rotate 270
+        return image.transpose(PIL.Image.ROTATE_270)
+    elif orientation == 7:
+        # top-to-right mirror
+        return PIL.ImageOps.mirror(image.transpose(PIL.Image.ROTATE_90))
+    elif orientation == 8:
+        # rotate 90
+        return image.transpose(PIL.Image.ROTATE_90)
+    else:
+        return image
 
 class Labelme2YOLO(object):
     
@@ -211,7 +314,7 @@ class Labelme2YOLO(object):
         img_path = os.path.join(image_dir_path, target_dir,img_name)
         
         if not os.path.exists(img_path):
-            img = utils.img_b64_to_arr(json_data['imageData'])
+            img = img_b64_to_arr(json_data['imageData'])
             PIL.Image.fromarray(img).save(img_path)
         
         return img_path
