@@ -30,9 +30,9 @@ dependencies = [
 dynamic = ["version"]
 
 [project.urls]
-Documentation = "https://github.com/unknown/labelme2yolo#readme"
-Issues = "https://github.com/unknown/labelme2yolo/issues"
-Source = "https://github.com/unknown/labelme2yolo"
+Documentation = "https://github.com/greatv/labelme2yolo#readme"
+Issues = "https://github.com/greatv/labelme2yolo/issues"
+Source = "https://github.com/greatv/labelme2yolo"
 
 [tool.hatch.version]
 path = "src/labelme2yolo/__about__.py"
