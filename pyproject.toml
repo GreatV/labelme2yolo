@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "labelme2yolo"
+description = "This script converts the JSON format output by LabelMe to the text format required by YOLO serirs."
+readme = "README.md"
+requires-python = ">=3.7"
+license = "MIT"
+keywords = []
+authors = [
+  { name = "GreatV(Wang Xin)", email = "xinwang614@gmail.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.7",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+  "opencv-python>=4.1.2",
+  "Pillow",
+  "scikit-learn"
+]
+dynamic = ["version"]
+
+[project.urls]
+Documentation = "https://github.com/unknown/labelme2yolo#readme"
+Issues = "https://github.com/unknown/labelme2yolo/issues"
+Source = "https://github.com/unknown/labelme2yolo"
+
+[tool.hatch.version]
+path = "src/labelme2yolo/__about__.py"
+
+[project.scripts]
+labelme2yolo = "labelme2yolo.cli:run"
+
+[tool.hatch.build.targets.sdist]
+[tool.hatch.build.targets.wheel]
+
+[tool.hatch.envs.default]
+dependencies = [
+  "pytest",
+  "pytest-cov",
+]
+[tool.hatch.envs.default.scripts]
+cov = "pytest --cov-report=term-missing --cov-config=pyproject.toml --cov=labelme2yolo --cov=tests"
+no-cov = "cov --no-cov"
+
+[[tool.hatch.envs.test.matrix]]
+python = ["37", "38", "39", "310"]
+
+[tool.coverage.run]
+branch = true
+parallel = true
+omit = [
+  "src/labelme2yolo/__about__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
