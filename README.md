@@ -2,6 +2,9 @@
 
 # Labelme2YOLO
 
+[![PyPI - Version](https://img.shields.io/pypi/v/labelme2yolo.svg)](https://pypi.org/project/labelme2yolo)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/labelme2yolo.svg)](https://pypi.org/project/labelme2yolo)
+
 Help converting LabelMe Annotation Tool JSON format to YOLO text file format. 
 If you've already marked your segmentation dataset by LabelMe, it's easy to use this tool to help converting to YOLO format dataset.
 
@@ -66,5 +69,12 @@ Script would generate YOLO format text label and image under **labelme_json_dir*
 /home/username/labelme_json_dir/2.png
 ```
 
-##
-Only tested on Centos 7/Python 3.6 environment.
+## Installation
+
+```console
+pip install labelme2yolo
+```
+
+## License
+
+`labelme2yolo` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
