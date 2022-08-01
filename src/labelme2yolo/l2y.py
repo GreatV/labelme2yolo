@@ -149,6 +149,17 @@ def _save_yolo_label(json_name, label_dir_path, target_dir, yolo_obj_list):
             f.write(yolo_obj_line)
 
 
+def _save_yolo_image(json_data, json_name, image_dir_path, target_dir):
+    img_name = json_name.replace('.json', '.png')
+    img_path = os.path.join(image_dir_path, target_dir, img_name)
+
+    if not os.path.exists(img_path):
+        img = img_b64_to_arr(json_data['imageData'])
+        PIL.Image.fromarray(img).save(img_path)
+
+    return img_path
+
+
 class Labelme2YOLO(object):
 
     def __init__(self, json_dir):
@@ -175,20 +186,9 @@ class Labelme2YOLO(object):
 
     def _train_test_split(self, folders, json_names, val_size, test_size):
         if len(folders) > 0 and 'train' in folders and 'val' in folders and 'test' in folders:
-            train_folder = os.path.join(self._json_dir, 'train/')
-            train_json_names = [train_sample_name + '.json'
-                                for train_sample_name in os.listdir(train_folder)
-                                if os.path.isdir(os.path.join(train_folder, train_sample_name))]
-
-            val_folder = os.path.join(self._json_dir, 'val/')
-            val_json_names = [val_sample_name + '.json'
-                              for val_sample_name in os.listdir(val_folder)
-                              if os.path.isdir(os.path.join(val_folder, val_sample_name))]
-
-            test_folder = os.path.join(self._json_dir, 'test/')
-            test_json_names = [test_sample_name + '.json'
-                               for test_sample_name in os.listdir(test_folder)
-                               if os.path.isdir(os.path.join(test_folder, test_sample_name))]
+            train_json_names = self.get_json_names('train/')
+            val_json_names = self.get_json_names('val/')
+            test_json_names = self.get_json_names('test/')
 
             return train_json_names, val_json_names, test_json_names
 
@@ -204,6 +204,13 @@ class Labelme2YOLO(object):
         test_json_names = [json_names[test_idx] for test_idx in test_indexes]
 
         return train_json_names, val_json_names, test_json_names
+
+    def get_json_names(self, data_type: str):
+        data_folder = os.path.join(self._json_dir, data_type)
+        data_json_names = [data_sample_name + '.json'
+                           for data_sample_name in os.listdir(data_folder)
+                           if os.path.isdir(os.path.join(data_folder, data_sample_name))]
+        return data_json_names
 
     def convert(self, val_size, test_size):
         json_names = [file_name for file_name in os.listdir(self._json_dir)
@@ -237,10 +244,10 @@ class Labelme2YOLO(object):
         print('Converting %s for %s ...' %
               (json_name, target_dir.replace('/', '')))
 
-        img_path = self._save_yolo_image(json_data,
-                                         json_name,
-                                         self._image_dir_path,
-                                         target_dir)
+        img_path = _save_yolo_image(json_data,
+                                    json_name,
+                                    self._image_dir_path,
+                                    target_dir)
 
         yolo_obj_list = self._get_yolo_object_list(json_data, img_path)
         _save_yolo_label(json_name,
@@ -254,8 +261,8 @@ class Labelme2YOLO(object):
 
         print('Converting %s ...' % json_name)
 
-        img_path = self._save_yolo_image(json_data, json_name,
-                                         self._json_dir, '')
+        img_path = _save_yolo_image(json_data, json_name,
+                                    self._json_dir, '')
 
         yolo_obj_list = self._get_yolo_object_list(json_data, img_path)
         _save_yolo_label(json_name, self._json_dir,
@@ -315,16 +322,6 @@ class Labelme2YOLO(object):
         label_id = self._label_id_map[shape['label']]
 
         return label_id, yolo_center_x, yolo_center_y, yolo_w, yolo_h
-
-    def _save_yolo_image(self, json_data, json_name, image_dir_path, target_dir):
-        img_name = json_name.replace('.json', '.png')
-        img_path = os.path.join(image_dir_path, target_dir, img_name)
-
-        if not os.path.exists(img_path):
-            img = img_b64_to_arr(json_data['imageData'])
-            PIL.Image.fromarray(img).save(img_path)
-
-        return img_path
 
     def _save_dataset_yaml(self):
         yaml_path = os.path.join(
