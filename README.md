@@ -2,6 +2,7 @@
 
 # Labelme2YOLO
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/83e52378b6dc4dd18418cbe74ee12b73)](https://app.codacy.com/gh/GreatV/labelme2yolo?utm_source=github.com&utm_medium=referral&utm_content=GreatV/labelme2yolo&utm_campaign=Badge_Grade_Settings)
 [![PyPI - Version](https://img.shields.io/pypi/v/labelme2yolo.svg)](https://pypi.org/project/labelme2yolo)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/labelme2yolo.svg)](https://pypi.org/project/labelme2yolo)
 
