@@ -66,60 +66,14 @@ def img_arr_to_b64(img_arr):
 
 # copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
 def img_data_to_png_data(img_data):
-    with io.BytesIO() as f:
-        f.write(img_data)
-        img = PIL.Image.open(f)
+    with io.BytesIO() as f_out:
+        f_out.write(img_data)
+        img = PIL.Image.open(f_out)
 
-        with io.BytesIO() as f:
-            img.save(f, "PNG")
-            f.seek(0)
-            return f.read()
-
-
-# copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
-def apply_exif_orientation(image):
-    try:
-        exif = image._getexif()
-    except AttributeError:
-        exif = None
-
-    if exif is None:
-        return image
-
-    exif = {
-        PIL.ExifTags.TAGS[k]: v
-        for k, v in exif.items()
-        if k in PIL.ExifTags.TAGS
-    }
-
-    orientation = exif.get("Orientation", None)
-
-    if orientation == 1:
-        # do nothing
-        return image
-    elif orientation == 2:
-        # left-to-right mirror
-        return PIL.ImageOps.mirror(image)
-    elif orientation == 3:
-        # rotate 180
-        return image.transpose(PIL.Image.ROTATE_180)
-    elif orientation == 4:
-        # top-to-bottom mirror
-        return PIL.ImageOps.flip(image)
-    elif orientation == 5:
-        # top-to-left mirror
-        return PIL.ImageOps.mirror(image.transpose(PIL.Image.ROTATE_270))
-    elif orientation == 6:
-        # rotate 270
-        return image.transpose(PIL.Image.ROTATE_270)
-    elif orientation == 7:
-        # top-to-right mirror
-        return PIL.ImageOps.mirror(image.transpose(PIL.Image.ROTATE_90))
-    elif orientation == 8:
-        # rotate 90
-        return image.transpose(PIL.Image.ROTATE_90)
-    else:
-        return image
+        with io.BytesIO() as f_in:
+            img.save(f_in, "PNG")
+            f_in.seek(0)
+            return f_in.read()
 
 
 def _get_label_id_map(json_dir):
@@ -325,15 +279,15 @@ class Labelme2YOLO(object):
 
     def _save_dataset_yaml(self):
         yaml_path = os.path.join(
-            self._json_dir, 'YOLODataset/', 'dataset.yaml')
+            self._json_dir, 'YOLODataset', 'dataset.yaml')
 
         with open(yaml_path, 'w+') as yaml_file:
             yaml_file.write('train: %s\n' %
-                            os.path.join(self._image_dir_path, 'train/'))
+                            os.path.join(self._image_dir_path, 'train'))
             yaml_file.write('val: %s\n\n' %
-                            os.path.join(self._image_dir_path, 'val/'))
+                            os.path.join(self._image_dir_path, 'val'))
             yaml_file.write('test: %s\n\n' %
-                            os.path.join(self._image_dir_path, 'test/'))
+                            os.path.join(self._image_dir_path, 'test'))
             yaml_file.write('nc: %i\n\n' % len(self._label_id_map))
 
             names_str = ''
