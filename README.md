@@ -3,6 +3,7 @@
 # Labelme2YOLO
 
 [![PyPI - Version](https://img.shields.io/pypi/v/labelme2yolo.svg)](https://pypi.org/project/labelme2yolo)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/labelme2yolo?style=flat)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/labelme2yolo.svg)](https://pypi.org/project/labelme2yolo)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/12122fe86f8643c4aa5667c20d528f61)](https://www.codacy.com/gh/GreatV/labelme2yolo/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=GreatV/labelme2yolo&amp;utm_campaign=Badge_Grade)
 
