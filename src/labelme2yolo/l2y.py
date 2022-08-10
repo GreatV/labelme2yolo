@@ -76,7 +76,7 @@ def img_data_to_png_data(img_data):
             return f_in.read()
 
 
-def _get_label_id_map(json_dir):
+def get_label_id_map(json_dir):
     label_set = set()
 
     for file_name in os.listdir(json_dir):
@@ -90,7 +90,7 @@ def _get_label_id_map(json_dir):
                         for label_id, label in enumerate(label_set)])
 
 
-def _save_yolo_label(json_name, label_dir_path, target_dir, yolo_obj_list):
+def save_yolo_label(json_name, label_dir_path, target_dir, yolo_obj_list):
     txt_path = os.path.join(label_dir_path,
                             target_dir,
                             json_name.replace('.json', '.txt'))
@@ -103,7 +103,7 @@ def _save_yolo_label(json_name, label_dir_path, target_dir, yolo_obj_list):
             f.write(yolo_obj_line)
 
 
-def _save_yolo_image(json_data, json_name, image_dir_path, target_dir):
+def save_yolo_image(json_data, json_name, image_dir_path, target_dir):
     img_name = json_name.replace('.json', '.png')
     img_path = os.path.join(image_dir_path, target_dir, img_name)
 
@@ -119,7 +119,7 @@ class Labelme2YOLO(object):
     def __init__(self, json_dir):
         self._json_dir = json_dir
 
-        self._label_id_map = _get_label_id_map(self._json_dir)
+        self._label_id_map = get_label_id_map(self._json_dir)
 
     def _make_train_val_dir(self):
         self._label_dir_path = os.path.join(self._json_dir,
@@ -150,10 +150,11 @@ class Labelme2YOLO(object):
                                                       test_size=val_size)
         tmp_train_len = len(train_indexes)
         test_indexes = []
-        if test_size > 1e-8:
+        if test_size:
             train_indexes, test_indexes = train_test_split(
                 range(tmp_train_len), test_size=test_size / (1 - val_size))
-        train_json_names = [json_names[train_idx] for train_idx in train_indexes]
+        train_json_names = [json_names[train_idx]
+                            for train_idx in train_indexes]
         val_json_names = [json_names[val_idx] for val_idx in val_indexes]
         test_json_names = [json_names[test_idx] for test_idx in test_indexes]
 
@@ -198,16 +199,16 @@ class Labelme2YOLO(object):
         print('Converting %s for %s ...' %
               (json_name, target_dir.replace('/', '')))
 
-        img_path = _save_yolo_image(json_data,
-                                    json_name,
-                                    self._image_dir_path,
-                                    target_dir)
+        img_path = save_yolo_image(json_data,
+                                   json_name,
+                                   self._image_dir_path,
+                                   target_dir)
 
         yolo_obj_list = self._get_yolo_object_list(json_data, img_path)
-        _save_yolo_label(json_name,
-                         self._label_dir_path,
-                         target_dir,
-                         yolo_obj_list)
+        save_yolo_label(json_name,
+                        self._label_dir_path,
+                        target_dir,
+                        yolo_obj_list)
 
     def convert_one(self, json_name):
         json_path = os.path.join(self._json_dir, json_name)
@@ -215,12 +216,12 @@ class Labelme2YOLO(object):
 
         print('Converting %s ...' % json_name)
 
-        img_path = _save_yolo_image(json_data, json_name,
-                                    self._json_dir, '')
+        img_path = save_yolo_image(json_data, json_name,
+                                   self._json_dir, '')
 
         yolo_obj_list = self._get_yolo_object_list(json_data, img_path)
-        _save_yolo_label(json_name, self._json_dir,
-                         '', yolo_obj_list)
+        save_yolo_label(json_name, self._json_dir,
+                        '', yolo_obj_list)
 
     def _get_yolo_object_list(self, json_data, img_path):
         yolo_obj_list = []
