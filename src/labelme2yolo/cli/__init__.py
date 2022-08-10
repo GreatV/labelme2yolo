@@ -27,5 +27,5 @@ def run():
         convertor.convert(val_size=args.val_size, test_size=args.test_size)
     else:
         convertor.convert_one(args.json_name)
-    
+
     return 0
