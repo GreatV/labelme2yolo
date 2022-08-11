@@ -21,6 +21,10 @@ import PIL.ImageOps
 from sklearn.model_selection import train_test_split
 
 
+# number of LabelMe2YOLO multiprocessing threads
+NUM_THREADS = max(1, os.cpu_count() - 1)
+
+
 # copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
 def img_data_to_pil(img_data):
     f = io.BytesIO()
@@ -199,7 +203,7 @@ class Labelme2YOLO(object):
             ("train/", "val/", "test/"),
             (train_json_names, val_json_names, test_json_names),
         ):
-            pool = Pool(os.cpu_count() - 1)
+            pool = Pool(NUM_THREADS)
             for json_name in json_names:
                 pool.apply_async(self.covert_json_to_text, args=(target_dir, json_name))
             pool.close()
