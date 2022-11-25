@@ -3,15 +3,24 @@
 # Labelme2YOLO
 
 [![PyPI - Version](https://img.shields.io/pypi/v/labelme2yolo.svg)](https://pypi.org/project/labelme2yolo)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/labelme2yolo?style=flat)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/labelme2yolo.svg)](https://pypi.org/project/labelme2yolo)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/12122fe86f8643c4aa5667c20d528f61)](https://www.codacy.com/gh/GreatV/labelme2yolo/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=GreatV/labelme2yolo&amp;utm_campaign=Badge_Grade)
 
 Help converting LabelMe Annotation Tool JSON format to YOLO text file format. 
 If you've already marked your segmentation dataset by LabelMe, it's easy to use this tool to help converting to YOLO format dataset.
 
 ---------
+
 ## New
 
 - export data as yolo polygon annotation (for YOLOv5 v7.0 segmentation)
+
+## Installation
+
+```console
+pip install labelme2yolo
+```
 
 ## Parameters Explain
 **--json_dir** LabelMe JSON files folder path.
@@ -27,57 +36,51 @@ If you've already marked your segmentation dataset by LabelMe, it's easy to use 
 ### 1. Convert JSON files, split training, validation and test dataset by --val_size and --test_size
 Put all LabelMe JSON files under **labelme_json_dir**, and run this python command.
 ```bash
-python labelme2yolo.py --json_dir /home/username/labelme_json_dir/ --val_size 0.15 --test_size 0.15
+labelme2yolo --json_dir /path/to/labelme_json_dir/ --val_size 0.15 --test_size 0.15
 ```
 Script would generate YOLO format dataset labels and images under different folders, for example,
 ```bash
-/home/username/labelme_json_dir/YOLODataset/labels/train/
-/home/username/labelme_json_dir/YOLODataset/labels/test/
-/home/username/labelme_json_dir/YOLODataset/labels/val/
-/home/username/labelme_json_dir/YOLODataset/images/train/
-/home/username/labelme_json_dir/YOLODataset/images/test/
-/home/username/labelme_json_dir/YOLODataset/images/val/
+/path/to/labelme_json_dir/YOLODataset/labels/train/
+/path/to/labelme_json_dir/YOLODataset/labels/test/
+/path/to/labelme_json_dir/YOLODataset/labels/val/
+/path/to/labelme_json_dir/YOLODataset/images/train/
+/path/to/labelme_json_dir/YOLODataset/images/test/
+/path/to/labelme_json_dir/YOLODataset/images/val/
 
-/home/username/labelme_json_dir/YOLODataset/dataset.yaml
+/path/to/labelme_json_dir/YOLODataset/dataset.yaml
 ```
 
 ### 2. Convert JSON files, split training and validation dataset by folder
 If you already split train dataset and validation dataset for LabelMe by yourself, please put these folder under labelme_json_dir, for example,
 ```bash
-/home/username/labelme_json_dir/train/
-/home/username/labelme_json_dir/val/
+/path/to/labelme_json_dir/train/
+/path/to/labelme_json_dir/val/
 ```
 Put all LabelMe JSON files under **labelme_json_dir**. 
 Script would read train and validation dataset by folder.
 Run this python command.
 ```bash
-python labelme2yolo.py --json_dir /home/username/labelme_json_dir/
+labelme2yolo --json_dir /path/to/labelme_json_dir/
 ```
 Script would generate YOLO format dataset labels and images under different folders, for example,
 ```bash
-/home/username/labelme_json_dir/YOLODataset/labels/train/
-/home/username/labelme_json_dir/YOLODataset/labels/val/
-/home/username/labelme_json_dir/YOLODataset/images/train/
-/home/username/labelme_json_dir/YOLODataset/images/val/
+/path/to/labelme_json_dir/YOLODataset/labels/train/
+/path/to/labelme_json_dir/YOLODataset/labels/val/
+/path/to/labelme_json_dir/YOLODataset/images/train/
+/path/to/labelme_json_dir/YOLODataset/images/val/
 
-/home/username/labelme_json_dir/YOLODataset/dataset.yaml
+/path/to/labelme_json_dir/YOLODataset/dataset.yaml
 ```
 
 ### 3. Convert single JSON file
 Put LabelMe JSON file under **labelme_json_dir**. , and run this python command.
 ```bash
-python labelme2yolo.py --json_dir /home/username/labelme_json_dir/ --json_name 2.json
+labelme2yolo --json_dir /path/to/labelme_json_dir/ --json_name 2.json
 ```
 Script would generate YOLO format text label and image under **labelme_json_dir**, for example,
 ```bash
-/home/username/labelme_json_dir/2.text
-/home/username/labelme_json_dir/2.png
-```
-
-## Installation
-
-```console
-pip install labelme2yolo
+/path/to/labelme_json_dir/2.text
+/path/to/labelme_json_dir/2.png
 ```
 
 ## License

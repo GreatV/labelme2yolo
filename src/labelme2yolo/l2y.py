@@ -1,26 +1,28 @@
-'''
+"""
 Created on Aug 18, 2021
 
 @author: xiaosonh
 @author: GreatV(Wang Xin)
-'''
-import os
-import sys
-import argparse
-import shutil
-import math
+"""
 import base64
 import io
+import json
+import math
+import os
+import shutil
 from collections import OrderedDict
 from multiprocessing import Pool
-import json
 
 import cv2
-from sklearn.model_selection import train_test_split
 import numpy as np
 import PIL.ExifTags
 import PIL.Image
 import PIL.ImageOps
+from sklearn.model_selection import train_test_split
+
+
+# number of LabelMe2YOLO multiprocessing threads
+NUM_THREADS = max(1, os.cpu_count() - 1)
 
 
 # copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
@@ -68,60 +70,54 @@ def img_arr_to_b64(img_arr):
 
 # copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
 def img_data_to_png_data(img_data):
-    with io.BytesIO() as f:
-        f.write(img_data)
-        img = PIL.Image.open(f)
+    with io.BytesIO() as f_out:
+        f_out.write(img_data)
+        img = PIL.Image.open(f_out)
 
-        with io.BytesIO() as f:
-            img.save(f, "PNG")
-            f.seek(0)
-            return f.read()
+        with io.BytesIO() as f_in:
+            img.save(f_in, "PNG")
+            f_in.seek(0)
+            return f_in.read()
 
 
-# copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
-def apply_exif_orientation(image):
-    try:
-        exif = image._getexif()
-    except AttributeError:
-        exif = None
+def get_label_id_map(json_dir):
+    label_set = set()
 
-    if exif is None:
-        return image
+    for file_name in os.listdir(json_dir):
+        if file_name.endswith("json"):
+            json_path = os.path.join(json_dir, file_name)
+            data = json.load(open(json_path))
+            for shape in data["shapes"]:
+                label_set.add(shape["label"])
 
-    exif = {
-        PIL.ExifTags.TAGS[k]: v
-        for k, v in exif.items()
-        if k in PIL.ExifTags.TAGS
-    }
+    return OrderedDict([(label, label_id) for label_id, label in enumerate(label_set)])
 
-    orientation = exif.get("Orientation", None)
 
-    if orientation == 1:
-        # do nothing
-        return image
-    elif orientation == 2:
-        # left-to-right mirror
-        return PIL.ImageOps.mirror(image)
-    elif orientation == 3:
-        # rotate 180
-        return image.transpose(PIL.Image.ROTATE_180)
-    elif orientation == 4:
-        # top-to-bottom mirror
-        return PIL.ImageOps.flip(image)
-    elif orientation == 5:
-        # top-to-left mirror
-        return PIL.ImageOps.mirror(image.transpose(PIL.Image.ROTATE_270))
-    elif orientation == 6:
-        # rotate 270
-        return image.transpose(PIL.Image.ROTATE_270)
-    elif orientation == 7:
-        # top-to-right mirror
-        return PIL.ImageOps.mirror(image.transpose(PIL.Image.ROTATE_90))
-    elif orientation == 8:
-        # rotate 90
-        return image.transpose(PIL.Image.ROTATE_90)
-    else:
-        return image
+def save_yolo_label(json_name, label_dir_path, target_dir, yolo_obj_list):
+    txt_path = os.path.join(
+        label_dir_path, target_dir, json_name.replace(".json", ".txt")
+    )
+
+    with open(txt_path, "w+") as f:
+        for yolo_obj_idx, yolo_obj in enumerate(yolo_obj_list):
+            yolo_obj_line = (
+                "%s %s %s %s %s\n" % yolo_obj
+                if yolo_obj_idx + 1 != len(yolo_obj_list)
+                else "%s %s %s %s %s" % yolo_obj
+            )
+            f.write(yolo_obj_line)
+
+
+def save_yolo_image(json_data, json_name, image_dir_path, target_dir):
+    img_name = json_name.replace(".json", ".png")
+    img_path = os.path.join(image_dir_path, target_dir, img_name)
+
+    if not os.path.exists(img_path):
+        img = img_b64_to_arr(json_data["imageData"])
+        PIL.Image.fromarray(img).save(img_path)
+
+    return img_path
+
 
 
 class Labelme2YOLO(object):
@@ -209,6 +205,7 @@ class Labelme2YOLO(object):
         for target_dir, json_names in zip(('train/', 'val/', 'test/'),
                                           (train_json_names, val_json_names, test_json_names)):
             pool = Pool(os.cpu_count() - 1)
+
             for json_name in json_names:
                 pool.apply_async(self.covert_json_to_text,
                                  args=(target_dir, json_name))
@@ -252,7 +249,7 @@ class Labelme2YOLO(object):
         yolo_obj_list = []
 
         img_h, img_w, _ = cv2.imread(img_path).shape
-        for shape in json_data['shapes']:
+        for shape in json_data["shapes"]:
             # labelme circle shape is different from others
             # it only has 2 points, 1st is circle center, 2nd is drag end point
             if shape['shape_type'] == 'circle':
@@ -329,7 +326,8 @@ class Labelme2YOLO(object):
             yaml_file.write('nc: %i\n' % len(self._label_id_map))
 
             names_str = ''
+            
             for label, _ in self._label_id_map.items():
                 names_str += "'%s', " % label
-            names_str = names_str.rstrip(', ')
-            yaml_file.write('names: [%s]' % names_str)
+            names_str = names_str.rstrip(", ")
+            yaml_file.write("names: [%s]" % names_str)
