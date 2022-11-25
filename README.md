@@ -8,6 +8,11 @@
 Help converting LabelMe Annotation Tool JSON format to YOLO text file format. 
 If you've already marked your segmentation dataset by LabelMe, it's easy to use this tool to help converting to YOLO format dataset.
 
+---------
+## New
+
+- export data as yolo polygon annotation (for YOLOv5 v7.0 segmentation)
+
 ## Parameters Explain
 **--json_dir** LabelMe JSON files folder path.
 
