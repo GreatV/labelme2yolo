@@ -13,7 +13,6 @@ If you've already marked your segmentation dataset by LabelMe, it's easy to use 
 ---------
 
 ## New
-
 - export data as yolo polygon annotation (for YOLOv5 v7.0 segmentation)
 
 ## Installation

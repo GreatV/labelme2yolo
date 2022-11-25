@@ -119,7 +119,6 @@ def save_yolo_image(json_data, json_name, image_dir_path, target_dir):
     return img_path
 
 
-
 class Labelme2YOLO(object):
 
     def __init__(self, json_dir):
@@ -326,7 +325,7 @@ class Labelme2YOLO(object):
             yaml_file.write('nc: %i\n' % len(self._label_id_map))
 
             names_str = ''
-            
+
             for label, _ in self._label_id_map.items():
                 names_str += "'%s', " % label
             names_str = names_str.rstrip(", ")
