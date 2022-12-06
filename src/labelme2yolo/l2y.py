@@ -179,6 +179,8 @@ class Labelme2YOLO(object):
                                                 test_size=val_size)
         tmp_train_len = len(train_idxs)
         test_idxs = []
+        if test_size is None:
+            test_size = 0.0
         if test_size > 1e-8:
             train_idxs, test_idxs = train_test_split(
                 range(tmp_train_len), test_size=test_size / (1 - val_size))
