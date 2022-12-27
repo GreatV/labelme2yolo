@@ -93,6 +93,15 @@ def get_label_id_map(json_dir):
     return OrderedDict([(label, label_id) for label_id, label in enumerate(label_set)])
 
 
+def extend_point_list(point_list):
+    xmin = min([float(point) for point in point_list[::2]])
+    xmax = max([float(point) for point in point_list[::2]])
+    ymin = min([float(point) for point in point_list[1::2]])
+    ymax = max([float(point) for point in point_list[1::2]])
+
+    return np.array([xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax])
+
+
 def save_yolo_label(json_name, label_dir_path, target_dir, yolo_obj_list):
     txt_path = os.path.join(
         label_dir_path, target_dir, json_name.replace(".json", ".txt")
@@ -287,6 +296,8 @@ class Labelme2YOLO(object):
         points = np.zeros(2 * len(point_list))
         points[::2] = [float(point[0]) / img_w for point in point_list]
         points[1::2] = [float(point[1]) / img_h for point in point_list]
+        if len(points) == 4:
+            points = extend_point_list(points)
         label_id = self._label_id_map[shape['label']]
 
         return (label_id, points.tolist())
