@@ -82,6 +82,15 @@ Script would generate YOLO format text label and image under **labelme_json_dir*
 /path/to/labelme_json_dir/2.png
 ```
 
+## How to build package/wheel
+
+1. [install hatch](https://hatch.pypa.io/latest/install/)
+2. Run the following command:
+
+```shell
+hatch build
+```
+
 ## License
 
 `labelme2yolo` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
