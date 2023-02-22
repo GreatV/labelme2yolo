@@ -152,6 +152,7 @@ class Labelme2YOLO(object):
 
             os.makedirs(yolo_path)
 
+    @staticmethod
     def _get_label_id_map(self, json_dir):
         label_set = set()
 
@@ -214,7 +215,7 @@ class Labelme2YOLO(object):
         # also get image from labelme json file and save them under images folder
         for target_dir, json_names in zip(('train/', 'val/', 'test/'),
                                           (train_json_names, val_json_names, test_json_names)):
-            pool = Pool(os.cpu_count() - 1)
+            pool = Pool(NUM_THREADS)
 
             for json_name in json_names:
                 pool.apply_async(self.covert_json_to_text,
@@ -300,8 +301,9 @@ class Labelme2YOLO(object):
             points = extend_point_list(points)
         label_id = self._label_id_map[shape['label']]
 
-        return (label_id, points.tolist())
+        return label_id, points.tolist()
 
+    @staticmethod
     def _save_yolo_label(self, json_name, label_dir_path, target_dir, yolo_obj_list):
         txt_path = os.path.join(label_dir_path,
                                 target_dir,
@@ -314,6 +316,7 @@ class Labelme2YOLO(object):
                 yolo_obj_line = f"{label} {' '.join(points)}\n"
                 f.write(yolo_obj_line)
 
+    @staticmethod
     def _save_yolo_image(self, json_data, json_name, image_dir_path, target_dir):
         img_name = json_name.replace('.json', '.png')
         img_path = os.path.join(image_dir_path, target_dir, img_name)
