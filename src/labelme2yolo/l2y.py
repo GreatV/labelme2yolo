@@ -93,27 +93,28 @@ def get_label_id_map(json_dir):
     return OrderedDict([(label, label_id) for label_id, label in enumerate(label_set)])
 
 
-def extend_point_list(point_list):
+def extend_point_list(point_list, format="polygon"):
     xmin = min([float(point) for point in point_list[::2]])
     xmax = max([float(point) for point in point_list[::2]])
     ymin = min([float(point) for point in point_list[1::2]])
     ymax = max([float(point) for point in point_list[1::2]])
 
-    return np.array([xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax])
+    if (format == "polygon"):
+        return np.array([xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax])
+    if (format == "bbox"):
+        return np.array([xmin, ymin, xmax - xmin, ymax - ymin])
 
 
 def save_yolo_label(json_name, label_dir_path, target_dir, yolo_obj_list):
-    txt_path = os.path.join(
-        label_dir_path, target_dir, json_name.replace(".json", ".txt")
-    )
+    txt_path = os.path.join(label_dir_path,
+                            target_dir,
+                            json_name.replace(".json", ".txt"))
 
     with open(txt_path, "w+") as f:
-        for yolo_obj_idx, yolo_obj in enumerate(yolo_obj_list):
-            yolo_obj_line = (
-                "%s %s %s %s %s\n" % yolo_obj
-                if yolo_obj_idx + 1 != len(yolo_obj_list)
-                else "%s %s %s %s %s" % yolo_obj
-            )
+        for yolo_obj in yolo_obj_list:
+            label, points = yolo_obj
+            points = [str(item) for item in points]
+            yolo_obj_line = f"{label} {' '.join(points)}\n"
             f.write(yolo_obj_line)
 
 
@@ -130,10 +131,11 @@ def save_yolo_image(json_data, json_name, image_dir_path, target_dir):
 
 class Labelme2YOLO(object):
 
-    def __init__(self, json_dir):
+    def __init__(self, json_dir, output_format):
         self._json_dir = json_dir
+        self._output_format = output_format
 
-        self._label_id_map = self._get_label_id_map(self._json_dir)
+        self._label_id_map = get_label_id_map(self._json_dir)
 
     def _make_train_val_dir(self):
         self._label_dir_path = os.path.join(self._json_dir,
@@ -151,20 +153,6 @@ class Labelme2YOLO(object):
                 shutil.rmtree(yolo_path)
 
             os.makedirs(yolo_path)
-
-    @staticmethod
-    def _get_label_id_map(self, json_dir):
-        label_set = set()
-
-        for file_name in os.listdir(json_dir):
-            if file_name.endswith('json'):
-                json_path = os.path.join(json_dir, file_name)
-                data = json.load(open(json_path))
-                for shape in data['shapes']:
-                    label_set.add(shape['label'])
-
-        return OrderedDict([(label, label_id)
-                            for label_id, label in enumerate(label_set)])
 
     def _train_test_split(self, folders, json_names, val_size, test_size):
         if len(folders) > 0 and 'train' in folders and 'val' in folders and 'test' in folders:
@@ -233,15 +221,15 @@ class Labelme2YOLO(object):
         print('Converting %s for %s ...' %
               (json_name, target_dir.replace('/', '')))
 
-        img_path = self._save_yolo_image(json_data,
-                                         json_name,
-                                         self._image_dir_path,
-                                         target_dir)
+        img_path = save_yolo_image(json_data,
+                                   json_name,
+                                   self._image_dir_path,
+                                   target_dir)
         yolo_obj_list = self._get_yolo_object_list(json_data, img_path)
-        self._save_yolo_label(json_name,
-                              self._label_dir_path,
-                              target_dir,
-                              yolo_obj_list)
+        save_yolo_label(json_name,
+                        self._label_dir_path,
+                        target_dir,
+                        yolo_obj_list)
 
     def convert_one(self, json_name):
         json_path = os.path.join(self._json_dir, json_name)
@@ -249,12 +237,12 @@ class Labelme2YOLO(object):
 
         print('Converting %s ...' % json_name)
 
-        img_path = self._save_yolo_image(json_data, json_name,
-                                         self._json_dir, '')
+        img_path = save_yolo_image(json_data, json_name,
+                                   self._json_dir, '')
 
         yolo_obj_list = self._get_yolo_object_list(json_data, img_path)
-        self._save_yolo_label(json_name, self._json_dir,
-                              '', yolo_obj_list)
+        save_yolo_label(json_name, self._json_dir,
+                        '', yolo_obj_list)
 
     def _get_yolo_object_list(self, json_data, img_path):
         yolo_obj_list = []
@@ -298,34 +286,13 @@ class Labelme2YOLO(object):
         points[::2] = [float(point[0]) / img_w for point in point_list]
         points[1::2] = [float(point[1]) / img_h for point in point_list]
         if len(points) == 4:
-            points = extend_point_list(points)
+            if self._output_format == "polygon":
+                points = extend_point_list(points)
+            if self._output_format == "bbox":
+                points = extend_point_list(points, "bbox")
         label_id = self._label_id_map[shape['label']]
 
         return label_id, points.tolist()
-
-    @staticmethod
-    def _save_yolo_label(self, json_name, label_dir_path, target_dir, yolo_obj_list):
-        txt_path = os.path.join(label_dir_path,
-                                target_dir,
-                                json_name.replace('.json', '.txt'))
-
-        with open(txt_path, 'w+') as f:
-            for yolo_obj in yolo_obj_list:
-                label, points = yolo_obj
-                points = [str(item) for item in points]
-                yolo_obj_line = f"{label} {' '.join(points)}\n"
-                f.write(yolo_obj_line)
-
-    @staticmethod
-    def _save_yolo_image(self, json_data, json_name, image_dir_path, target_dir):
-        img_name = json_name.replace('.json', '.png')
-        img_path = os.path.join(image_dir_path, target_dir, img_name)
-
-        if not os.path.exists(img_path):
-            img = img_b64_to_arr(json_data['imageData'])
-            PIL.Image.fromarray(img).save(img_path)
-
-        return img_path
 
     def _save_dataset_yaml(self):
         yaml_path = os.path.join(

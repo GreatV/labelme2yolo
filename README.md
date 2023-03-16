@@ -14,7 +14,7 @@ If you've already marked your segmentation dataset by LabelMe, it's easy to use 
 
 ## New
 - export data as yolo polygon annotation (for YOLOv5 v7.0 segmentation)
-
+- Now you can choose the output format of the label text. The available options are `plygon` and `bbox`.
 ## Installation
 
 ```console
@@ -29,6 +29,8 @@ pip install labelme2yolo
 **--test_size (Optional)** Test dataset size, for example 0.2 means 20% for Test.
 
 **--json_name (Optional)** Convert single LabelMe JSON file.
+
+**--output_format (Optional)** The output format of label.
 
 ## How to Use
 

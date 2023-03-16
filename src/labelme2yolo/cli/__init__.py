@@ -16,14 +16,14 @@ def run():
         type=float,
         nargs="?",
         default=None,
-        help="Please input the validation dataset size, for example 0.1 ",
+        help="Please input the validation dataset size, for example 0.1.",
     )
     parser.add_argument(
         "--test_size",
         type=float,
         nargs="?",
         default=None,
-        help="Please input the validation dataset size, for example 0.1 ",
+        help="Please input the test dataset size, for example 0.1.",
     )
     parser.add_argument(
         "--json_name",
@@ -32,13 +32,21 @@ def run():
         default=None,
         help="If you put json name, it would convert only one json file to YOLO.",
     )
+    parser.add_argument(
+        "--output_format",
+        type=str,
+        default="polygon",
+        help='The default output format for labelme2yolo is "polygon".'
+        ' However, you can choose to output in bbox format by specifying the "bbox" option.',
+    )
+
     args = parser.parse_args()
 
     if not args.json_dir:
         parser.print_help()
         return 0
 
-    convertor = Labelme2YOLO(args.json_dir)
+    convertor = Labelme2YOLO(args.json_dir, args.output_format)
 
     if args.json_name is None:
         convertor.convert(val_size=args.val_size, test_size=args.test_size)
