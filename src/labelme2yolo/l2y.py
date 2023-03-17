@@ -93,15 +93,15 @@ def get_label_id_map(json_dir):
     return OrderedDict([(label, label_id) for label_id, label in enumerate(label_set)])
 
 
-def extend_point_list(point_list, format="polygon"):
+def extend_point_list(point_list, out_format="polygon"):
     xmin = min([float(point) for point in point_list[::2]])
     xmax = max([float(point) for point in point_list[::2]])
     ymin = min([float(point) for point in point_list[1::2]])
     ymax = max([float(point) for point in point_list[1::2]])
 
-    if (format == "polygon"):
+    if (out_format == "polygon"):
         return np.array([xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax])
-    if (format == "bbox"):
+    if (out_format == "bbox"):
         return np.array([xmin, ymin, xmax - xmin, ymax - ymin])
 
 
