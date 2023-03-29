@@ -181,7 +181,7 @@ class Labelme2YOLO(object):
             test_size = 0.0
         if test_size > 1e-8:
             train_idxs, test_idxs = train_test_split(
-                range(tmp_train_len), test_size=test_size / (1 - val_size))
+                train_idxs, test_size=test_size / (1 - val_size))
         train_json_names = [json_names[train_idx] for train_idx in train_idxs]
         val_json_names = [json_names[val_idx] for val_idx in val_idxs]
         test_json_names = [json_names[test_idx] for test_idx in test_idxs]
