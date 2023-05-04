@@ -39,6 +39,14 @@ def run():
         help='The default output format for labelme2yolo is "polygon".'
         ' However, you can choose to output in bbox format by specifying the "bbox" option.',
     )
+    parser.add_argument(
+        "--label_list",
+        type=str,
+        nargs="+",
+        default=None,
+        help="The ordered label list, for example --label_list cat dog",
+        required=False,
+    )
 
     args = parser.parse_args()
 
@@ -46,7 +54,8 @@ def run():
         parser.print_help()
         return 0
 
-    convertor = Labelme2YOLO(args.json_dir, args.output_format)
+    convertor = Labelme2YOLO(
+        args.json_dir, args.output_format, args.label_list)
 
     if args.json_name is None:
         convertor.convert(val_size=args.val_size, test_size=args.test_size)
