@@ -33,6 +33,8 @@ pip install labelme2yolo
 
 **--output\_format (Optional)** The output format of label.
 
+**--label\_list (Optional)** The pre-assigned category labels.
+
 ## How to Use
 
 ### 1. Convert JSON files, split training, validation and test dataset by --val\_size and --test\_size

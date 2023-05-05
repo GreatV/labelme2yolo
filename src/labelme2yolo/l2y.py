@@ -118,11 +118,20 @@ def save_yolo_label(json_name, label_dir_path, target_dir, yolo_obj_list):
             f.write(yolo_obj_line)
 
 
-def save_yolo_image(json_data, json_name, image_dir_path, target_dir):
+def save_yolo_image(json_data, json_path, image_dir_path, target_dir):
+    json_name = os.path.basename(json_path)
     img_name = json_name.replace(".json", ".png")
+
+    # make image_path and save image
     img_path = os.path.join(image_dir_path, target_dir, img_name)
 
-    if not os.path.exists(img_path):
+    if json_data["imageData"] is None:
+        dirname = os.path.dirname(json_path)
+        image_name = json_data["imagePath"]
+        src_image_name = os.path.join(dirname, image_name)
+        src_image = cv2.imread(src_image_name)
+        cv2.imwrite(img_path, src_image)
+    else:
         img = img_b64_to_arr(json_data["imageData"])
         PIL.Image.fromarray(img).save(img_path)
 
@@ -228,7 +237,7 @@ class Labelme2YOLO(object):
               (json_name, target_dir.replace('/', '')))
 
         img_path = save_yolo_image(json_data,
-                                   json_name,
+                                   json_path,
                                    self._image_dir_path,
                                    target_dir)
         yolo_obj_list = self._get_yolo_object_list(json_data, img_path)
