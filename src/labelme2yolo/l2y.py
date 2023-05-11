@@ -102,7 +102,13 @@ def extend_point_list(point_list, out_format="polygon"):
     if (out_format == "polygon"):
         return np.array([xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax])
     if (out_format == "bbox"):
-        return np.array([xmin, ymin, xmax - xmin, ymax - ymin])
+        x = xmin
+        y = ymin
+        w = xmax - xmin
+        h = ymax - ymin
+        x = x + w / 2
+        y = y + h / 2
+        return np.array([x, y, w, h])
 
 
 def save_yolo_label(json_name, label_dir_path, target_dir, yolo_obj_list):
