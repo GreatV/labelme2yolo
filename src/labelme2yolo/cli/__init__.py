@@ -1,12 +1,18 @@
 # SPDX-FileCopyrightText: 2022-present Wang Xin <xinwang614@gmail.com>
 #
 # SPDX-License-Identifier: MIT
+"""
+cli init
+"""
 import argparse
 
 from labelme2yolo.l2y import Labelme2YOLO
 
 
 def run():
+    '''
+    run cli
+    '''
     parser = argparse.ArgumentParser("labelme2yolo")
     parser.add_argument(
         "--json_dir", type=str, help="Please input the path of the labelme json files."

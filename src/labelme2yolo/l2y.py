@@ -27,14 +27,16 @@ NUM_THREADS = max(1, os.cpu_count() - 1)
 
 # copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
 def img_data_to_pil(img_data):
-    f = io.BytesIO()
-    f.write(img_data)
-    img_pil = PIL.Image.open(f)
+    '''Convert img_data(byte) to PIL.Image'''
+    file = io.BytesIO()
+    file.write(img_data)
+    img_pil = PIL.Image.open(file)
     return img_pil
 
 
 # copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
 def img_data_to_arr(img_data):
+    '''Convert img_data(byte) to numpy.ndarray'''
     img_pil = img_data_to_pil(img_data)
     img_arr = np.array(img_pil)
     return img_arr
@@ -42,6 +44,7 @@ def img_data_to_arr(img_data):
 
 # copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
 def img_b64_to_arr(img_b64):
+    '''Convert img_b64(str) to numpy.ndarray'''
     img_data = base64.b64decode(img_b64)
     img_arr = img_data_to_arr(img_data)
     return img_arr
@@ -49,18 +52,20 @@ def img_b64_to_arr(img_b64):
 
 # copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
 def img_pil_to_data(img_pil):
-    f = io.BytesIO()
-    img_pil.save(f, format="PNG")
-    img_data = f.getvalue()
+    '''Convert PIL.Image to img_data(byte)'''
+    file = io.BytesIO()
+    img_pil.save(file, format="PNG")
+    img_data = file.getvalue()
     return img_data
 
 
 # copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
 def img_arr_to_b64(img_arr):
+    '''Convert numpy.ndarray to img_b64(str)'''
     img_pil = PIL.Image.fromarray(img_arr)
-    f = io.BytesIO()
-    img_pil.save(f, format="PNG")
-    img_bin = f.getvalue()
+    file = io.BytesIO()
+    img_pil.save(file, format="PNG")
+    img_bin = file.getvalue()
     if hasattr(base64, "encodebytes"):
         img_b64 = base64.encodebytes(img_bin)
     else:
@@ -70,6 +75,7 @@ def img_arr_to_b64(img_arr):
 
 # copy form https://github.com/wkentaro/labelme/blob/main/labelme/utils/image.py
 def img_data_to_png_data(img_data):
+    '''Convert img_data(byte) to png_data(byte)'''
     with io.BytesIO() as f_out:
         f_out.write(img_data)
         img = PIL.Image.open(f_out)
@@ -81,6 +87,7 @@ def img_data_to_png_data(img_data):
 
 
 def get_label_id_map(json_dir: str):
+    '''Get label id map from json files in json_dir'''
     label_set = set()
 
     for file_name in os.listdir(json_dir):
@@ -94,14 +101,15 @@ def get_label_id_map(json_dir: str):
 
 
 def extend_point_list(point_list, out_format="polygon"):
+    '''Extend point list to polygon or bbox'''
     xmin = min([float(point) for point in point_list[::2]])
     xmax = max([float(point) for point in point_list[::2]])
     ymin = min([float(point) for point in point_list[1::2]])
     ymax = max([float(point) for point in point_list[1::2]])
 
-    if (out_format == "polygon"):
+    if out_format == "polygon":
         return np.array([xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax])
-    if (out_format == "bbox"):
+    if out_format == "bbox":
         x = xmin
         y = ymin
         w = xmax - xmin
@@ -112,6 +120,7 @@ def extend_point_list(point_list, out_format="polygon"):
 
 
 def save_yolo_label(json_name, label_dir_path, target_dir, yolo_obj_list):
+    '''Save yolo label to txt file'''
     txt_path = os.path.join(label_dir_path,
                             target_dir,
                             json_name.replace(".json", ".txt"))
@@ -125,6 +134,7 @@ def save_yolo_label(json_name, label_dir_path, target_dir, yolo_obj_list):
 
 
 def save_yolo_image(json_data, json_path, image_dir_path, target_dir):
+    '''Save yolo image to image_dir_path/target_dir'''
     json_name = os.path.basename(json_path)
     img_name = json_name.replace(".json", ".png")
 
@@ -145,7 +155,7 @@ def save_yolo_image(json_data, json_path, image_dir_path, target_dir):
 
 
 class Labelme2YOLO(object):
-
+    '''Labelme to YOLO format converter'''
     def __init__(self, json_dir, output_format, label_list):
         self._json_dir = json_dir
         self._output_format = output_format
@@ -176,27 +186,26 @@ class Labelme2YOLO(object):
             os.makedirs(yolo_path)
 
     def _train_test_split(self, folders, json_names, val_size, test_size):
-        if len(folders) > 0 and 'train' in folders and 'val' in folders and 'test' in folders:
+        if len(folders) > 0 and 'train' in folders and 'val' in folders and 'test' in folders:  # noqa: E501
             train_folder = os.path.join(self._json_dir, 'train/')
             train_json_names = [train_sample_name + '.json'
                                 for train_sample_name in os.listdir(train_folder)
-                                if os.path.isdir(os.path.join(train_folder, train_sample_name))]
+                                if os.path.isdir(os.path.join(train_folder, train_sample_name))]  # noqa: E501
 
             val_folder = os.path.join(self._json_dir, 'val/')
             val_json_names = [val_sample_name + '.json'
                               for val_sample_name in os.listdir(val_folder)
-                              if os.path.isdir(os.path.join(val_folder, val_sample_name))]
+                              if os.path.isdir(os.path.join(val_folder, val_sample_name))]  # noqa: E501
 
             test_folder = os.path.join(self._json_dir, 'test/')
             test_json_names = [test_sample_name + '.json'
                                for test_sample_name in os.listdir(test_folder)
-                               if os.path.isdir(os.path.join(test_folder, test_sample_name))]
+                               if os.path.isdir(os.path.join(test_folder, test_sample_name))]  # noqa: E501
 
             return train_json_names, val_json_names, test_json_names
 
         train_idxs, val_idxs = train_test_split(range(len(json_names)),
                                                 test_size=val_size)
-        tmp_train_len = len(train_idxs)
         test_idxs = []
         if test_size is None:
             test_size = 0.0
@@ -223,7 +232,7 @@ class Labelme2YOLO(object):
         # convert labelme object to yolo format object, and save them to files
         # also get image from labelme json file and save them under images folder
         for target_dir, json_names in zip(('train/', 'val/', 'test/'),
-                                          (train_json_names, val_json_names, test_json_names)):
+                                          (train_json_names, val_json_names, test_json_names)):  # noqa: E501
             pool = Pool(NUM_THREADS)
 
             for json_name in json_names:
