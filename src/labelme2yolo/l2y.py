@@ -237,8 +237,9 @@ class Labelme2YOLO:
 
         # convert labelme object to yolo format object, and save them to files
         # also get image from labelme json file and save them under images folder
-        for target_dir, json_names in zip(('train/', 'val/', 'test/'),
-                                          (train_json_names, val_json_names, test_json_names)):  # noqa: E501
+        dirs = ('train/', 'val/', 'test/')
+        names = (train_json_names, val_json_names, test_json_names)
+        for target_dir, json_names in zip(dirs, names):
 
             with Pool(NUM_THREADS) as pool:
                 for json_name in json_names:
@@ -253,8 +254,8 @@ class Labelme2YOLO:
     def covert_json_to_text(self, target_dir, json_name):
         """Convert json file to yolo format text file and save them to files"""
         json_path = os.path.join(self._json_dir, json_name)
-        with open(json_path, encoding="utf-8") as f:
-            json_data = json.load(f)
+        with open(json_path, encoding="utf-8") as file:
+            json_data = json.load(file)
 
         print(f"Converting {json_name} for {target_dir.replace('/', '')} ...")
 
