@@ -106,13 +106,13 @@ def extend_point_list(point_list, out_format="polygon"):
     ymax = max(float(point) for point in point_list[1::2])
 
     if out_format == "bbox":
-        x = xmin
-        y = ymin
-        w = xmax - xmin
-        h = ymax - ymin
-        x = x + w / 2
-        y = y + h / 2
-        return np.array([x, y, w, h])
+        x_i = xmin
+        y_i = ymin
+        w_i = xmax - xmin
+        h_i = ymax - ymin
+        x_i = x_i + w_i / 2
+        y_i = y_i + h_i / 2
+        return np.array([x_i, y_i, w_i, h_i])
 
     return np.array([xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax])
 
@@ -123,12 +123,12 @@ def save_yolo_label(json_name, label_dir_path, target_dir, yolo_obj_list):
                             target_dir,
                             json_name.replace(".json", ".txt"))
 
-    with open(txt_path, "w+", encoding="utf-8") as f:
+    with open(txt_path, "w+", encoding="utf-8") as file:
         for yolo_obj in yolo_obj_list:
             label, points = yolo_obj
             points = [str(item) for item in points]
             yolo_obj_line = f"{label} {' '.join(points)}\n"
-            f.write(yolo_obj_line)
+            file.write(yolo_obj_line)
 
 
 def save_yolo_image(json_data, json_path, image_dir_path, target_dir):
@@ -186,25 +186,26 @@ class Labelme2YOLO:
 
             os.makedirs(yolo_path)
 
+    def _get_dataset_part_json_names(self, dataset_part: str):
+        '''Get json names in dataset_part folder'''
+        set_folder = os.path.join(self._json_dir, dataset_part)
+        json_names = []
+        for sample_name in os.listdir(set_folder):
+            set_dir = os.path.join(set_folder, sample_name)
+            if os.path.isdir(set_dir):
+                json_names.append(sample_name + '.json')
+        return json_names
+
     def _train_test_split(self, folders, json_names, val_size, test_size):
+        '''Split json names to train, val, test'''
         if (len(folders) > 0 and
             'train' in folders and
             'val' in folders and
                 'test' in folders):
-            train_folder = os.path.join(self._json_dir, 'train/')
-            train_json_names = [train_sample_name + '.json'
-                                for train_sample_name in os.listdir(train_folder)
-                                if os.path.isdir(os.path.join(train_folder, train_sample_name))]  # noqa: E501
 
-            val_folder = os.path.join(self._json_dir, 'val/')
-            val_json_names = [val_sample_name + '.json'
-                              for val_sample_name in os.listdir(val_folder)
-                              if os.path.isdir(os.path.join(val_folder, val_sample_name))]  # noqa: E501
-
-            test_folder = os.path.join(self._json_dir, 'test/')
-            test_json_names = [test_sample_name + '.json'
-                               for test_sample_name in os.listdir(test_folder)
-                               if os.path.isdir(os.path.join(test_folder, test_sample_name))]  # noqa: E501
+            train_json_names = self._get_dataset_part_json_names('train')
+            val_json_names = self._get_dataset_part_json_names('val')
+            test_json_names = self._get_dataset_part_json_names('test')
 
             return train_json_names, val_json_names, test_json_names
 
@@ -236,8 +237,9 @@ class Labelme2YOLO:
 
         # convert labelme object to yolo format object, and save them to files
         # also get image from labelme json file and save them under images folder
-        for target_dir, json_names in zip(('train/', 'val/', 'test/'),
-                                          (train_json_names, val_json_names, test_json_names)):  # noqa: E501
+        dirs = ('train/', 'val/', 'test/')
+        names = (train_json_names, val_json_names, test_json_names)
+        for target_dir, json_names in zip(dirs, names):
 
             with Pool(NUM_THREADS) as pool:
                 for json_name in json_names:
@@ -252,8 +254,8 @@ class Labelme2YOLO:
     def covert_json_to_text(self, target_dir, json_name):
         """Convert json file to yolo format text file and save them to files"""
         json_path = os.path.join(self._json_dir, json_name)
-        with open(json_path, encoding="utf-8") as f:
-            json_data = json.load(f)
+        with open(json_path, encoding="utf-8") as file:
+            json_data = json.load(file)
 
         print(f"Converting {json_name} for {target_dir.replace('/', '')} ...")
 
@@ -268,10 +270,12 @@ class Labelme2YOLO:
                         yolo_obj_list)
 
     def convert_one(self, json_name):
+        """Convert one json file to yolo format text file and save them to files"""
         json_path = os.path.join(self._json_dir, json_name)
-        json_data = json.load(open(json_path))
+        with open(json_path, encoding="utf-8") as file:
+            json_data = json.load(file)
 
-        print('Converting %s ...' % json_name)
+        print(f'Converting {json_name} ...')
 
         img_path = save_yolo_image(json_data, json_name,
                                    self._json_dir, '')
@@ -314,7 +318,7 @@ class Labelme2YOLO:
         if shape['label'] in self._label_id_map:
             label_id = self._label_id_map[shape['label']]
         else:
-            print('label %s not in %s' % shape['label'], self._label_list)
+            print(f"label {shape['label']} not in {self._label_list}")
 
         return label_id, yolo_center_x, yolo_center_y, yolo_w, yolo_h
 
@@ -333,7 +337,7 @@ class Labelme2YOLO:
         if shape['label'] in self._label_id_map:
             label_id = self._label_id_map[shape['label']]
         else:
-            print('label %s not in %s' % shape['label'], self._label_list)
+            print(f"label {shape['label']} not in {self._label_list}")
 
         return label_id, points.tolist()
 
@@ -341,18 +345,19 @@ class Labelme2YOLO:
         yaml_path = os.path.join(
             self._json_dir, 'YOLODataset/', 'dataset.yaml')
 
-        with open(yaml_path, 'w+') as yaml_file:
-            yaml_file.write('train: %s\n' %
-                            os.path.join(self._image_dir_path, 'train/'))
-            yaml_file.write('val: %s\n' %
-                            os.path.join(self._image_dir_path, 'val/'))
-            yaml_file.write('test: %s\n' %
-                            os.path.join(self._image_dir_path, 'test/'))
-            yaml_file.write('nc: %i\n' % len(self._label_id_map))
+        with open(yaml_path, 'w+', encoding="utf-8") as yaml_file:
+
+            train_dir = os.path.join(self._image_dir_path, 'train/')
+            val_dir = os.path.join(self._image_dir_path, 'val/')
+            test_dir = os.path.join(self._image_dir_path, 'test/')
 
             names_str = ''
-
             for label, _ in self._label_id_map.items():
-                names_str += "'%s', " % label
+                names_str += f"\"{label}\", "
             names_str = names_str.rstrip(", ")
-            yaml_file.write("names: [%s]" % names_str)
+
+            content = (f"train: {train_dir}\nval: {val_dir}\ntest: {test_dir}\n"
+                       f"nc: {len(self._label_id_map)}\n"
+                       f"names: [{names_str}]")
+
+            yaml_file.write(content)
