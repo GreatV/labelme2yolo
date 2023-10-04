@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "labelme2yolo"
 description = "This script converts the JSON format output by LabelMe to the text format required by YOLO serirs."
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 license = "MIT"
 keywords = []
 authors = [
@@ -15,7 +15,6 @@ authors = [
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python",
-  "Programming Language :: Python :: 3.7",
   "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
@@ -25,7 +24,6 @@ classifiers = [
 dependencies = [
   "opencv-python>=4.1.2",
   "Pillow>=9.2,<10.1",
-  "scikit-learn>=1.1.1,<1.4.0",
   "numpy>=1.23.1,<1.27.0"
 ]
 dynamic = ["version"]
@@ -54,7 +52,7 @@ cov = "pytest --cov-report=term-missing --cov-config=pyproject.toml --cov=labelm
 no-cov = "cov --no-cov"
 
 [[tool.hatch.envs.test.matrix]]
-python = ["37", "38", "39", "310"]
+python = ["38", "39", "310"]
 
 [tool.coverage.run]
 branch = true

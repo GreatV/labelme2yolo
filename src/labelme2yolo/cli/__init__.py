@@ -21,14 +21,14 @@ def run():
         "--val_size",
         type=float,
         nargs="?",
-        default=None,
+        default=0.2,
         help="Please input the validation dataset size, for example 0.1.",
     )
     parser.add_argument(
         "--test_size",
         type=float,
         nargs="?",
-        default=None,
+        default=0.0,
         help="Please input the test dataset size, for example 0.1.",
     )
     parser.add_argument(
