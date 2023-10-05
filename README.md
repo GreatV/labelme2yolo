@@ -7,21 +7,20 @@
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/labelme2yolo.svg)](https://pypi.org/project/labelme2yolo)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/12122fe86f8643c4aa5667c20d528f61)](https://www.codacy.com/gh/GreatV/labelme2yolo/dashboard?utm_source=github.com\&utm_medium=referral\&utm_content=GreatV/labelme2yolo\&utm_campaign=Badge_Grade)
 
-Help converting LabelMe Annotation Tool JSON format to YOLO text file format.
-If you've already marked your segmentation dataset by LabelMe, it's easy to use this tool to help converting to YOLO format dataset.
+Labelme2YOLO is a powerful tool for converting LabelMe's JSON format to [YOLOv5](https://github.com/ultralytics/yolov5) dataset format. This tool can also be used for YOLOv5/YOLOv8 segmentation datasets, if you have already made your segmentation dataset with LabelMe, it is easy to use this tool to help convert to YOLO format dataset.
 
-## New
+## New Features
 
 * export data as yolo polygon annotation (for YOLOv5 v7.0 segmentation)
 * Now you can choose the output format of the label text. The two available alternatives are `polygon` and bounding box (`bbox`).
 
 ## Installation
 
-```console
+```shell
 pip install labelme2yolo
 ```
 
-## Parameters Explain
+## Arguments
 
 **--json\_dir** LabelMe JSON files folder path.
 
@@ -37,17 +36,17 @@ pip install labelme2yolo
 
 ## How to Use
 
-### 1. Convert JSON files, split training, validation and test dataset by --val\_size and --test\_size
+### 1. Converting JSON files and splitting training, validation, and test datasets with --val\_size and --test\_size
 
-Put all LabelMe JSON files under **labelme\_json\_dir**, and run this python command.
+You may need to place all LabelMe JSON files under **labelme\_json\_dir** and then run the following command:
 
-```bash
+```shell
 labelme2yolo --json_dir /path/to/labelme_json_dir/ --val_size 0.15 --test_size 0.15
 ```
 
-Script would generate YOLO format dataset labels and images under different folders, for example,
+This tool will generate dataset labels and images with YOLO format in different folders, such as
 
-```bash
+```plaintext
 /path/to/labelme_json_dir/YOLODataset/labels/train/
 /path/to/labelme_json_dir/YOLODataset/labels/test/
 /path/to/labelme_json_dir/YOLODataset/labels/val/
@@ -58,47 +57,30 @@ Script would generate YOLO format dataset labels and images under different fold
 /path/to/labelme_json_dir/YOLODataset/dataset.yaml
 ```
 
-### 2. Convert JSON files, split training and validation dataset by folder
+### 2. Converting JSON files and splitting training and validation datasets by folders
 
-If you already split train dataset and validation dataset for LabelMe by yourself, please put these folder under labelme\_json\_dir, for example,
+If you have split the LabelMe training dataset and validation dataset on your own, please put these folders under **labelme\_json\_dir** as shown below:
 
-```bash
+```plaintext
 /path/to/labelme_json_dir/train/
 /path/to/labelme_json_dir/val/
 ```
 
-Put all LabelMe JSON files under **labelme\_json\_dir**.
-Script would read train and validation dataset by folder.
-Run this python command.
+This tool will read the training and validation datasets by folder. You may run the following command to do this:
 
-```bash
+```shell
 labelme2yolo --json_dir /path/to/labelme_json_dir/
 ```
 
-Script would generate YOLO format dataset labels and images under different folders, for example,
+This tool will generate dataset labels and images with YOLO format in different folders, such as
 
-```bash
+```plaintext
 /path/to/labelme_json_dir/YOLODataset/labels/train/
 /path/to/labelme_json_dir/YOLODataset/labels/val/
 /path/to/labelme_json_dir/YOLODataset/images/train/
 /path/to/labelme_json_dir/YOLODataset/images/val/
 
 /path/to/labelme_json_dir/YOLODataset/dataset.yaml
-```
-
-### 3. Convert single JSON file
-
-Put LabelMe JSON file under **labelme\_json\_dir**. , and run this python command.
-
-```bash
-labelme2yolo --json_dir /path/to/labelme_json_dir/ --json_name 2.json
-```
-
-Script would generate YOLO format text label and image under **labelme\_json\_dir**, for example,
-
-```bash
-/path/to/labelme_json_dir/2.text
-/path/to/labelme_json_dir/2.png
 ```
 
 ## How to build package/wheel
