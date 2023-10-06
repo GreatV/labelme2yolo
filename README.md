@@ -2,6 +2,7 @@
 
 **Forked from [rooneysh/Labelme2YOLO](https://github.com/rooneysh/Labelme2YOLO)**
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/c6eeab6fe5ec439bae570dd824f309d4)](https://app.codacy.com/gh/GreatV/labelme2yolo?utm_source=github.com&utm_medium=referral&utm_content=GreatV/labelme2yolo&utm_campaign=Badge_Grade)
 [![PyPI - Version](https://img.shields.io/pypi/v/labelme2yolo.svg)](https://pypi.org/project/labelme2yolo)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/labelme2yolo?style=flat)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/labelme2yolo.svg)](https://pypi.org/project/labelme2yolo)
