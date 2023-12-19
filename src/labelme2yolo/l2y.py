@@ -231,7 +231,8 @@ class Labelme2YOLO:
         dirs = ("train/", "val/", "test/")
         names = (train_json_names, val_json_names, test_json_names)
         for target_dir, json_names in zip(dirs, names):
-            logger.info(f"Converting {target_dir.replace('/', '')} set...")
+            target_part = target_dir.replace("/", "")
+            logger.info("Converting %s set ...", target_part)
             for json_name in tqdm.tqdm(json_names):
                 self.covert_json_to_text(target_dir, json_name)
 
@@ -257,10 +258,14 @@ class Labelme2YOLO:
         with open(json_path, encoding="utf-8") as file:
             json_data = json.load(file)
 
-        img_path = save_yolo_image(json_data, json_name, self._json_dir, "")
+        image_name = json_name.replace(".json", ".png")
+        label_name = json_name.replace(".json", ".txt")
+        img_path = save_yolo_image(
+            json_data, self._json_dir, self._image_dir_path, "", image_name
+        )
 
         yolo_obj_list = self._get_yolo_object_list(json_data, img_path)
-        save_yolo_label(json_name, self._json_dir, "", yolo_obj_list)
+        save_yolo_label(yolo_obj_list, self._label_dir_path, "", label_name)
 
     def _get_yolo_object_list(self, json_data, img_path):
         yolo_obj_list = []
@@ -274,7 +279,8 @@ class Labelme2YOLO:
             else:
                 yolo_obj = self._get_other_shape_yolo_object(shape, img_h, img_w)
 
-            yolo_obj_list.append(yolo_obj)
+            if yolo_obj:
+                yolo_obj_list.append(yolo_obj)
 
         return yolo_obj_list
 
@@ -300,8 +306,8 @@ class Labelme2YOLO:
             label_id = self._label_id_map[shape["label"]]
 
             return label_id, yolo_center_x, yolo_center_y, yolo_w, yolo_h
-        else:
-            raise "<label> is empty!"
+
+        return None
 
     def _get_other_shape_yolo_object(self, shape, img_h, img_w):
         point_list = shape["points"]
@@ -322,8 +328,8 @@ class Labelme2YOLO:
             label_id = self._label_id_map[shape["label"]]
 
             return label_id, points.tolist()
-        else:
-            raise "<label> is empty!"
+
+        return None
 
     def _save_dataset_yaml(self):
         yaml_path = os.path.join(self._json_dir, "YOLODataset/", "dataset.yaml")
