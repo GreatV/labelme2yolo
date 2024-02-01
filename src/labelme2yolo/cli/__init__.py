@@ -5,15 +5,18 @@
 cli init
 """
 import argparse
-
+from labelme2yolo.__about__ import __version__
 from labelme2yolo.l2y import Labelme2YOLO
 
 
 def run():
-    '''
+    """
     run cli
-    '''
+    """
     parser = argparse.ArgumentParser("labelme2yolo")
+    parser.add_argument(
+        "-v", "--version", action="version", version="%(prog)s " + __version__
+    )
     parser.add_argument(
         "--json_dir", type=str, help="Please input the path of the labelme json files."
     )
@@ -22,7 +25,7 @@ def run():
         type=float,
         nargs="?",
         default=0.2,
-        help="Please input the validation dataset size, for example 0.1.",
+        help="Please input the validation dataset size, for example 0.2.",
     )
     parser.add_argument(
         "--test_size",
@@ -60,8 +63,7 @@ def run():
         parser.print_help()
         return 0
 
-    convertor = Labelme2YOLO(
-        args.json_dir, args.output_format, args.label_list)
+    convertor = Labelme2YOLO(args.json_dir, args.output_format, args.label_list)
 
     if args.json_name is None:
         convertor.convert(val_size=args.val_size, test_size=args.test_size)

@@ -35,7 +35,7 @@ def train_test_split(dataset_index, test_size=0.2):
     """Split dataset into train set and test set with test_size"""
     test_size = min(max(0.0, test_size), 1.0)
     total_size = len(dataset_index)
-    train_size = int(math.ceil(total_size * (1.0 - test_size)))
+    train_size = int(round(total_size * (1.0 - test_size)))
     random.shuffle(dataset_index)
     train_index = dataset_index[:train_size]
     test_index = dataset_index[train_size:]
@@ -169,22 +169,19 @@ class Labelme2YOLO:
             self._label_list.append(label)
             self._label_id_map[label] = len(self._label_id_map)
 
-    def _make_train_val_dir(self):
+    def _make_train_val_dir(self, create_test_dir=False):
         self._label_dir_path = os.path.join(self._json_dir, "YOLODataset/labels/")
         self._image_dir_path = os.path.join(self._json_dir, "YOLODataset/images/")
 
-        for yolo_path in (
-            os.path.join(self._label_dir_path + "train/"),
-            os.path.join(self._label_dir_path + "val/"),
-            os.path.join(self._label_dir_path + "test/"),
-            os.path.join(self._image_dir_path + "train/"),
-            os.path.join(self._image_dir_path + "val/"),
-            os.path.join(self._image_dir_path + "test/"),
-        ):
-            if os.path.exists(yolo_path):
-                shutil.rmtree(yolo_path)
+        for yolo_path in [self._label_dir_path, self._image_dir_path]:
+            shutil.rmtree(yolo_path, ignore_errors=True)
 
-            os.makedirs(yolo_path)
+        parts = ["train", "val", "test"] if create_test_dir else ["train", "val"]
+        image_dirs = [os.path.join(self._image_dir_path, part) for part in parts]
+        label_dirs = [os.path.join(self._label_dir_path, part) for part in parts]
+        dirs = image_dirs + label_dirs
+        for yolo_path in dirs:
+            os.makedirs(yolo_path, exist_ok=True)
 
     def _get_dataset_part_json_names(self, dataset_part: str):
         """Get json names in dataset_part folder"""
@@ -196,7 +193,7 @@ class Labelme2YOLO:
                 json_names.append(sample_name + ".json")
         return json_names
 
-    def _train_test_split(self, json_names, val_size, test_size):
+    def _train_test_split(self, json_names, val_size, test_size=None):
         """Split json names to train, val, test"""
         total_size = len(json_names)
         dataset_index = list(range(total_size))
@@ -204,7 +201,7 @@ class Labelme2YOLO:
         test_ids = []
         if test_size is None:
             test_size = 0.0
-        if test_size > 1e-8:
+        if test_size > 0.0:
             train_ids, test_ids = train_test_split(
                 train_ids, test_size=test_size / (1 - val_size)
             )
@@ -220,19 +217,19 @@ class Labelme2YOLO:
             os.path.join(self._json_dir, "**", "*.json"), recursive=True
         )
         json_names = sorted(json_names)
+
         train_json_names, val_json_names, test_json_names = self._train_test_split(
             json_names, val_size, test_size
         )
 
-        self._make_train_val_dir()
+        self._make_train_val_dir(test_size > 0.0)
 
         # convert labelme object to yolo format object, and save them to files
         # also get image from labelme json file and save them under images folder
-        dirs = ("train/", "val/", "test/")
+        dirs = ("train", "val", "test")
         names = (train_json_names, val_json_names, test_json_names)
         for target_dir, json_names in zip(dirs, names):
-            target_part = target_dir.replace("/", "")
-            logger.info("Converting %s set ...", target_part)
+            logger.info("Converting %s set ...", target_dir)
             for json_name in tqdm.tqdm(json_names):
                 self.covert_json_to_text(target_dir, json_name)
 
@@ -291,13 +288,12 @@ class Labelme2YOLO:
             (obj_center_x - shape["points"][1][0]) ** 2
             + (obj_center_y - shape["points"][1][1]) ** 2
         )
-        obj_w = 2 * radius
-        obj_h = 2 * radius
-
-        yolo_center_x = round(float(obj_center_x / img_w), 6)
-        yolo_center_y = round(float(obj_center_y / img_h), 6)
-        yolo_w = round(float(obj_w / img_w), 6)
-        yolo_h = round(float(obj_h / img_h), 6)
+        num_points = 36
+        points = np.zeros(2 * num_points)
+        for i in range(num_points):
+            angle = 2.0 * math.pi * i / num_points
+            points[2 * i] = (obj_center_x + radius * math.cos(angle)) / img_w
+            points[2 * i + 1] = (obj_center_y + radius * math.sin(angle)) / img_h
 
         if shape["label"]:
             label = shape["label"]
@@ -305,7 +301,7 @@ class Labelme2YOLO:
                 self._update_id_map(label)
             label_id = self._label_id_map[shape["label"]]
 
-            return label_id, yolo_center_x, yolo_center_y, yolo_w, yolo_h
+            return label_id, points.tolist()
 
         return None
 
@@ -344,10 +340,17 @@ class Labelme2YOLO:
                 names_str += f'"{label}", '
             names_str = names_str.rstrip(", ")
 
-            content = (
-                f"train: {train_dir}\nval: {val_dir}\ntest: {test_dir}\n"
-                f"nc: {len(self._label_id_map)}\n"
-                f"names: [{names_str}]"
-            )
+            if os.path.exists(test_dir):
+                content = (
+                    f"train: {train_dir}\nval: {val_dir}\ntest: {test_dir}\n"
+                    f"nc: {len(self._label_id_map)}\n"
+                    f"names: [{names_str}]"
+                )
+            else:
+                content = (
+                    f"train: {train_dir}\nval: {val_dir}\n"
+                    f"nc: {len(self._label_id_map)}\n"
+                    f"names: [{names_str}]"
+                )
 
             yaml_file.write(content)
