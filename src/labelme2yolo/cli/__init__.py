@@ -5,7 +5,7 @@
 cli init
 """
 import argparse
-
+from labelme2yolo.__about__ import __version__
 from labelme2yolo.l2y import Labelme2YOLO
 
 
@@ -14,6 +14,7 @@ def run():
     run cli
     '''
     parser = argparse.ArgumentParser("labelme2yolo")
+    parser.add_argument('-v', '--version', action='version', version='%(prog)s ' + __version__)
     parser.add_argument(
         "--json_dir", type=str, help="Please input the path of the labelme json files."
     )
