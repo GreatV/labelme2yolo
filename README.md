@@ -1,7 +1,5 @@
 # Labelme2YOLO
 
-**Forked from [rooneysh/Labelme2YOLO](https://github.com/rooneysh/Labelme2YOLO)**
-
 [![PyPI - Version](https://img.shields.io/pypi/v/labelme2yolo.svg)](https://pypi.org/project/labelme2yolo)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/labelme2yolo?style=flat)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/labelme2yolo.svg)](https://pypi.org/project/labelme2yolo)
@@ -11,7 +9,7 @@ Labelme2YOLO is a powerful tool for converting LabelMe's JSON format to [YOLOv5]
 
 ## New Features
 
-* export data as yolo polygon annotation (for YOLOv5 v7.0 segmentation)
+* export data as yolo polygon annotation (for YOLOv5 & YOLOV8 segmentation)
 * Now you can choose the output format of the label text. The two available alternatives are `polygon` and bounding box (`bbox`).
 
 ## Installation
@@ -26,7 +24,7 @@ pip install labelme2yolo
 
 **--val\_size (Optional)** Validation dataset size, for example 0.2 means 20% for validation.
 
-**--test\_size (Optional)** Test dataset size, for example 0.2 means 20% for Test.
+**--test\_size (Optional)** Test dataset size, for example 0.1 means 10% for Test.
 
 **--json\_name (Optional)** Convert single LabelMe JSON file.
 
@@ -36,7 +34,25 @@ pip install labelme2yolo
 
 ## How to Use
 
-### 1. Converting JSON files and splitting training, validation, and test datasets with --val\_size and --test\_size
+### 1. Converting JSON files and splitting training, validation datasets
+
+You may need to place all LabelMe JSON files under **labelme\_json\_dir** and then run the following command:
+
+```shell
+labelme2yolo --json_dir /path/to/labelme_json_dir/
+```
+
+This tool will generate dataset labels and images with YOLO format in different folders, such as
+
+```plaintext
+/path/to/labelme_json_dir/YOLODataset/labels/train/
+/path/to/labelme_json_dir/YOLODataset/labels/val/
+/path/to/labelme_json_dir/YOLODataset/images/train/
+/path/to/labelme_json_dir/YOLODataset/images/val/
+/path/to/labelme_json_dir/YOLODataset/dataset.yaml
+```
+
+### 2. Converting JSON files and splitting training, validation, and test datasets with --val\_size and --test\_size
 
 You may need to place all LabelMe JSON files under **labelme\_json\_dir** and then run the following command:
 
@@ -53,33 +69,6 @@ This tool will generate dataset labels and images with YOLO format in different 
 /path/to/labelme_json_dir/YOLODataset/images/train/
 /path/to/labelme_json_dir/YOLODataset/images/test/
 /path/to/labelme_json_dir/YOLODataset/images/val/
-
-/path/to/labelme_json_dir/YOLODataset/dataset.yaml
-```
-
-### 2. Converting JSON files and splitting training and validation datasets by folders
-
-If you have split the LabelMe training dataset and validation dataset on your own, please put these folders under **labelme\_json\_dir** as shown below:
-
-```plaintext
-/path/to/labelme_json_dir/train/
-/path/to/labelme_json_dir/val/
-```
-
-This tool will read the training and validation datasets by folder. You may run the following command to do this:
-
-```shell
-labelme2yolo --json_dir /path/to/labelme_json_dir/
-```
-
-This tool will generate dataset labels and images with YOLO format in different folders, such as
-
-```plaintext
-/path/to/labelme_json_dir/YOLODataset/labels/train/
-/path/to/labelme_json_dir/YOLODataset/labels/val/
-/path/to/labelme_json_dir/YOLODataset/images/train/
-/path/to/labelme_json_dir/YOLODataset/images/val/
-
 /path/to/labelme_json_dir/YOLODataset/dataset.yaml
 ```
 
@@ -93,5 +82,7 @@ hatch build
 ```
 
 ## License
+
+**Forked from [rooneysh/Labelme2YOLO](https://github.com/rooneysh/Labelme2YOLO)**
 
 `labelme2yolo` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
