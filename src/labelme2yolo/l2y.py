@@ -21,7 +21,7 @@ import PIL.Image
 import PIL.ImageOps
 import cv2
 import numpy as np
-import tqdm
+from rich.progress import track
 
 # set seed
 random.seed(12345678)
@@ -246,7 +246,7 @@ class Labelme2YOLO:
         for target_dir, json_names in zip(dirs, names):
             logger.info("Converting %s set ...", target_dir)
             with Pool(os.cpu_count() - 1) as pool:
-                for json_name in tqdm.tqdm(json_names):
+                for json_name in track(json_names):
                     pool.apply(self.covert_json_to_text, (target_dir, json_name))
 
         self._save_dataset_yaml()
