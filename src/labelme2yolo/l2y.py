@@ -14,6 +14,7 @@ import random
 import shutil
 import uuid
 import logging
+from functools import partial
 
 from multiprocessing import Pool
 import PIL.ExifTags
@@ -21,7 +22,7 @@ import PIL.Image
 import PIL.ImageOps
 import cv2
 import numpy as np
-from rich.progress import track
+from rich.progress import Progress
 
 # set seed
 random.seed(12345678)
@@ -245,9 +246,11 @@ class Labelme2YOLO:
         names = (train_json_names, val_json_names, test_json_names)
         for target_dir, json_names in zip(dirs, names):
             logger.info("Converting %s set ...", target_dir)
-            with Pool(os.cpu_count() - 1) as pool:
-                for json_name in track(json_names):
-                    pool.apply(self.covert_json_to_text, (target_dir, json_name))
+            with Pool(os.cpu_count() - 1) as pool, Progress() as progress:
+                task = progress.add_task("[cyan]Converting...", total=len(json_names))
+                func = partial(self.covert_json_to_text, target_dir)
+                for _ in pool.map(func, json_names):
+                    progress.update(task, advance=1)
 
         self._save_dataset_yaml()
 
