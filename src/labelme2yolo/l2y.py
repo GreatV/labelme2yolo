@@ -249,7 +249,7 @@ class Labelme2YOLO:
             with Pool(os.cpu_count() - 1) as pool, Progress() as progress:
                 task = progress.add_task("[cyan]Converting...", total=len(json_names))
                 func = partial(self.covert_json_to_text, target_dir)
-                for _ in pool.map(func, json_names):
+                for _ in pool.imap_unordered(func, json_names):
                     progress.update(task, advance=1)
 
         self._save_dataset_yaml()
