@@ -2,6 +2,7 @@
 
 [![PyPI - Version](https://img.shields.io/pypi/v/labelme2yolo.svg)](https://pypi.org/project/labelme2yolo)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/labelme2yolo?style=flat)
+[![PYPI - Downloads](https://static.pepy.tech/badge/labelme2yolo)](https://pepy.tech/project/labelme2yolo)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/labelme2yolo.svg)](https://pypi.org/project/labelme2yolo)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/12122fe86f8643c4aa5667c20d528f61)](https://www.codacy.com/gh/GreatV/labelme2yolo/dashboard?utm_source=github.com\&utm_medium=referral\&utm_content=GreatV/labelme2yolo\&utm_campaign=Badge_Grade)
 
