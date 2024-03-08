@@ -166,6 +166,7 @@ class Labelme2YOLO:
                 label: label_id for label_id, label in enumerate(label_list)
             }
         else:
+            logger.info("Searching label list from json files ...")
             # get label list from json files for parallel processing
             json_files = glob.glob(
                 os.path.join(self._json_dir, "**", "*.json"), recursive=True
