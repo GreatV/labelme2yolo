@@ -137,14 +137,14 @@ def save_yolo_image(json_data, json_dir, image_dir, target_dir, target_name):
     """Save yolo image to image_dir_path/target_dir"""
     img_path = os.path.join(image_dir, target_dir, target_name)
 
-    if json_data["imageData"] is None:
+    if json_data["imageData"]:
+        img = img_b64_to_arr(json_data["imageData"])
+        PIL.Image.fromarray(img).save(img_path)
+    else:
         image_name = json_data["imagePath"]
         src_image_name = os.path.join(json_dir, image_name)
         src_image = cv2.imread(src_image_name)
         cv2.imwrite(img_path, src_image)
-    else:
-        img = img_b64_to_arr(json_data["imageData"])
-        PIL.Image.fromarray(img).save(img_path)
 
     return img_path
 
