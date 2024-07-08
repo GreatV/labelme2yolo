@@ -24,7 +24,7 @@ classifiers = [
 ]
 dependencies = [
   "opencv-python>=4.1.2",
-  "Pillow>=9.2,<10.4",
+  "Pillow>=10.4.0,<10.5",
   "numpy>=1.23.1,<2.1.0",
   "rich"
 ]
