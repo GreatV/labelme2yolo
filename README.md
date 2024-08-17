@@ -3,7 +3,6 @@
 [![PyPI - Version](https://img.shields.io/pypi/v/labelme2yolo.svg)](https://pypi.org/project/labelme2yolo)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/labelme2yolo?style=flat)
 [![PYPI - Downloads](https://static.pepy.tech/badge/labelme2yolo)](https://pepy.tech/project/labelme2yolo)
-[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/labelme2yolo.svg)](https://pypi.org/project/labelme2yolo)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/12122fe86f8643c4aa5667c20d528f61)](https://www.codacy.com/gh/GreatV/labelme2yolo/dashboard?utm_source=github.com\&utm_medium=referral\&utm_content=GreatV/labelme2yolo\&utm_campaign=Badge_Grade)
 
 Labelme2YOLO is a powerful tool for converting LabelMe's JSON format to [YOLOv5](https://github.com/ultralytics/yolov5) dataset format. This tool can also be used for YOLOv5/YOLOv8 segmentation datasets, if you have already made your segmentation dataset with LabelMe, it is easy to use this tool to help convert to YOLO format dataset.
@@ -11,7 +10,11 @@ Labelme2YOLO is a powerful tool for converting LabelMe's JSON format to [YOLOv5]
 ## New Features
 
 * export data as yolo polygon annotation (for YOLOv5 & YOLOV8 segmentation)
-* Now you can choose the output format of the label text. The two available alternatives are `polygon` and bounding box (`bbox`).
+* Now you can choose the output format of the label text. The two available alternatives are `polygon` and bounding box `bbox`.
+
+## Performance
+
+Labelme2YOLO is implemented in Rust, which makes it significantly faster than equivalent Python implementations. In fact, it can be up to 100 times faster, allowing you to process large datasets more efficiently.
 
 ## Installation
 
