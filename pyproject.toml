@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
 
 [project]
 name = "labelme2yolo"
@@ -13,59 +13,17 @@ authors = [
   { name = "GreatV(Wang Xin)", email = "xinwang614@gmail.com" },
 ]
 classifiers = [
-  "Development Status :: 5 - Production/Stable",
-  "Programming Language :: Python",
-  "Programming Language :: Python :: 3.8",
-  "Programming Language :: Python :: 3.9",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
-  "License :: OSI Approved :: MIT License",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
 ]
-dependencies = [
-  "opencv-python>=4.1.2",
-  "Pillow>=10.4.0,<10.5",
-  "numpy>=1.23.1,<2.1.0",
-  "rich"
-]
+
 dynamic = ["version"]
+
+[tool.maturin]
+bindings = "bin"
 
 [project.urls]
 Documentation = "https://github.com/greatv/labelme2yolo#readme"
 Issues = "https://github.com/greatv/labelme2yolo/issues"
 Source = "https://github.com/greatv/labelme2yolo"
-
-[tool.hatch.version]
-path = "src/labelme2yolo/__about__.py"
-
-[project.scripts]
-labelme2yolo = "labelme2yolo.cli:run"
-
-[tool.hatch.build.targets.sdist]
-[tool.hatch.build.targets.wheel]
-
-[tool.hatch.envs.default]
-dependencies = [
-  "pytest",
-  "pytest-cov",
-]
-[tool.hatch.envs.default.scripts]
-cov = "pytest --cov-report=term-missing --cov-config=pyproject.toml --cov=labelme2yolo --cov=tests"
-no-cov = "cov --no-cov"
-
-[[tool.hatch.envs.test.matrix]]
-python = ["38", "39", "310", "311", "312"]
-
-[tool.coverage.run]
-branch = true
-parallel = true
-omit = [
-  "src/labelme2yolo/__about__.py",
-]
-
-[tool.coverage.report]
-exclude_lines = [
-  "no cov",
-  "if __name__ == .__main__.:",
-  "if TYPE_CHECKING:",
-]
