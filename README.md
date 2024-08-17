@@ -75,15 +75,11 @@ This tool will generate dataset labels and images with YOLO format in different 
 
 ## How to build package/wheel
 
-1. [install hatch](https://hatch.pypa.io/latest/install/)
-2. Run the following command:
-
 ```shell
-hatch build
+pip install maturin
+maturin develop
 ```
 
 ## License
-
-**Forked from [rooneysh/Labelme2YOLO](https://github.com/rooneysh/Labelme2YOLO)**
 
 `labelme2yolo` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
