@@ -1,38 +1,41 @@
 use clap::{Parser, ValueEnum};
 use glob::glob;
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
-use serde::{Serialize, Deserialize};  
+use indicatif::{ProgressBar, ProgressStyle};
+use rand::rngs::StdRng;
+use rand::seq::SliceRandom;
+use rand::SeedableRng;
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
 use std::fs;
+use std::fs::copy;
 use std::fs::File;
 use std::io::Write;
-use std::fs::copy;
-use rand::seq::SliceRandom;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
+use std::path::{Path, PathBuf};
+use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 
-#[derive(Debug, Serialize, Deserialize)]  
-struct Shape {  
-    label: String,  
-    points: Vec<(f64, f64)>,  
+#[derive(Debug, Serialize, Deserialize)]
+struct Shape {
+    label: String,
+    points: Vec<(f64, f64)>,
     group_id: Option<String>,
-    shape_type: String, 
+    shape_type: String,
     description: Option<String>,
     mask: Option<String>,
-}  
-  
-#[derive(Debug, Serialize, Deserialize)]  
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ImageAnnotation {  
-    version: String,  
+struct ImageAnnotation {
+    version: String,
     flags: Option<HashMap<String, bool>>,
-    shapes: Vec<Shape>,  
-    image_path: String,  
-    image_data: String,  
-    image_height: u32,  
-    image_width: u32,  
+    shapes: Vec<Shape>,
+    image_path: String,
+    image_data: String,
+    image_height: u32,
+    image_width: u32,
 }
 
 /// A powerful tool for converting LabelMe's JSON format to YOLO dataset format.  
@@ -105,26 +108,20 @@ fn read_and_parse_json(path: &Path) -> Option<ImageAnnotation> {
 
 fn main() {
     let args = Args::parse();
-
     let dirname = PathBuf::from(&args.json_dir);
     let pattern = dirname.join("**/*.json");
-
     let labels_dir = dirname.join("YOLODataset/labels");
     let images_dir = dirname.join("YOLODataset/images");
-
     create_dir(&labels_dir);
     create_dir(&images_dir);
-
     let train_labels_dir = labels_dir.join("train");
     let val_labels_dir = labels_dir.join("val");
     let train_images_dir = images_dir.join("train");
     let val_images_dir = images_dir.join("val");
-
     create_dir(&train_labels_dir);
     create_dir(&val_labels_dir);
     create_dir(&train_images_dir);
     create_dir(&val_images_dir);
-
     let (test_labels_dir, test_images_dir) = if args.test_size > 0.0 {
         let test_labels_dir = labels_dir.join("test");
         let test_images_dir = images_dir.join("test");
@@ -134,12 +131,9 @@ fn main() {
     } else {
         (None, None)
     };
-
-    let mut label_map = HashMap::new();
-    let mut next_class_id = 0;
-
+    let label_map = Arc::new(Mutex::new(HashMap::new()));
+    let next_class_id = Arc::new(Mutex::new(0));
     let mut annotations = Vec::new();
-
     for entry in glob(pattern.to_str().expect("Failed to convert path to string"))
         .expect("Failed to read glob pattern")
     {
@@ -149,7 +143,6 @@ fn main() {
             }
         }
     }
-
     // Shuffle and split the annotations into train, val, and test sets
     let seed: u64 = 42; // Fixed random seed
     let mut rng = StdRng::seed_from_u64(seed);
@@ -158,51 +151,122 @@ fn main() {
     let val_size = (annotations.len() as f32 * args.val_size).ceil() as usize;
     let (test_annotations, rest_annotations) = annotations.split_at(test_size);
     let (val_annotations, train_annotations) = rest_annotations.split_at(val_size);
-
     // Update label_map from label_list if not empty
     if !args.label_list.is_empty() {
+        let mut label_map_guard = label_map.lock().unwrap();
         for (id, label) in args.label_list.iter().enumerate() {
-            label_map.insert(label.clone(), id);
+            label_map_guard.insert(label.clone(), id);
         }
-        next_class_id = args.label_list.len();
+        *next_class_id.lock().unwrap() = args.label_list.len();
     }
 
-    for (path, annotation) in train_annotations {
-        process_annotation(path, annotation, &train_labels_dir, &train_images_dir, &mut label_map, &mut next_class_id, &args, &dirname);
-    }
+    // Create progress bars
+    let train_pb = Arc::new(Mutex::new(ProgressBar::new(train_annotations.len() as u64)));
+    train_pb.lock().unwrap().set_style(ProgressStyle::default_bar()
+        .template("{spinner:.green} [Train] [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
+        .progress_chars("#>-"));
 
-    for (path, annotation) in val_annotations {
-        process_annotation(path, annotation, &val_labels_dir, &val_images_dir, &mut label_map, &mut next_class_id, &args, &dirname);
-    }
+    let val_pb = Arc::new(Mutex::new(ProgressBar::new(val_annotations.len() as u64)));
+    val_pb.lock().unwrap().set_style(ProgressStyle::default_bar()
+        .template("{spinner:.green} [Val] [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
+        .progress_chars("#>-"));
 
+    let test_pb = Arc::new(Mutex::new(ProgressBar::new(test_annotations.len() as u64)));
+    test_pb.lock().unwrap().set_style(ProgressStyle::default_bar()
+        .template("{spinner:.green} [Test] [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
+        .progress_chars("#>-"));
+
+    // Process train_annotations in parallel
+    train_annotations.par_iter().for_each(|(path, annotation)| {
+        let mut label_map_guard = label_map.lock().unwrap();
+        let mut next_class_id_guard = next_class_id.lock().unwrap();
+        process_annotation(
+            path,
+            annotation,
+            &train_labels_dir,
+            &train_images_dir,
+            &mut label_map_guard,
+            &mut next_class_id_guard,
+            &args,
+            &dirname,
+        );
+        train_pb.lock().unwrap().inc(1);
+    });
+    train_pb
+        .lock()
+        .unwrap()
+        .finish_with_message("Train processing complete");
+
+    // Process val_annotations in parallel
+    val_annotations.par_iter().for_each(|(path, annotation)| {
+        let mut label_map_guard = label_map.lock().unwrap();
+        let mut next_class_id_guard = next_class_id.lock().unwrap();
+        process_annotation(
+            path,
+            annotation,
+            &val_labels_dir,
+            &val_images_dir,
+            &mut label_map_guard,
+            &mut next_class_id_guard,
+            &args,
+            &dirname,
+        );
+        val_pb.lock().unwrap().inc(1);
+    });
+    val_pb
+        .lock()
+        .unwrap()
+        .finish_with_message("Val processing complete");
+
+    // Process test_annotations in parallel
     if let (Some(test_labels_dir), Some(test_images_dir)) = (test_labels_dir, test_images_dir) {
-        for (path, annotation) in test_annotations {
-            process_annotation(path, annotation, &test_labels_dir, &test_images_dir, &mut label_map, &mut next_class_id, &args, &dirname);
-        }
+        test_annotations.par_iter().for_each(|(path, annotation)| {
+            let mut label_map_guard = label_map.lock().unwrap();
+            let mut next_class_id_guard = next_class_id.lock().unwrap();
+            process_annotation(
+                path,
+                annotation,
+                &test_labels_dir,
+                &test_images_dir,
+                &mut label_map_guard,
+                &mut next_class_id_guard,
+                &args,
+                &dirname,
+            );
+            test_pb.lock().unwrap().inc(1);
+        });
+        test_pb
+            .lock()
+            .unwrap()
+            .finish_with_message("Test processing complete");
     }
 
     // Create dataset.yaml file after processing annotations
     let dataset_yaml_path = dirname.join("YOLODataset/dataset.yaml");
-    let mut dataset_yaml = File::create(dataset_yaml_path).expect("Failed to create dataset.yaml file");
-
-    let absolute_path = fs::canonicalize(&dirname.join("YOLODataset")).expect("Failed to get absolute path");
-
-    let mut yaml_content = format!("path: {}\ntrain: images/train\nval: images/val\n", absolute_path.to_str().unwrap());
+    let mut dataset_yaml =
+        File::create(dataset_yaml_path).expect("Failed to create dataset.yaml file");
+    let absolute_path =
+        fs::canonicalize(&dirname.join("YOLODataset")).expect("Failed to get absolute path");
+    let mut yaml_content = format!(
+        "path: {}\ntrain: images/train\nval: images/val\n",
+        absolute_path.to_str().unwrap()
+    );
     if args.test_size > 0.0 {
         yaml_content.push_str("test: images/test\n");
     } else {
         yaml_content.push_str("test:\n");
     }
     yaml_content.push_str("\nnames:\n");
-
     // Read names from label_map
-    let mut sorted_labels: Vec<_> = label_map.iter().collect();
+    let label_map_guard = label_map.lock().unwrap();
+    let mut sorted_labels: Vec<_> = label_map_guard.iter().collect();
     sorted_labels.sort_by_key(|&(_, id)| id);
     for (label, id) in sorted_labels {
         yaml_content.push_str(&format!("    {}: {}\n", id, label));
     }
-
-    dataset_yaml.write_all(yaml_content.as_bytes()).expect("Failed to write to dataset.yaml file");
+    dataset_yaml
+        .write_all(yaml_content.as_bytes())
+        .expect("Failed to write to dataset.yaml file");
 }
 
 fn process_annotation(
@@ -237,12 +301,7 @@ fn process_annotation(
             if shape.shape_type == "rectangle" {
                 let (x1, y1) = shape.points[0];
                 let (x2, y2) = shape.points[1];
-                let rect_points = vec![
-                    (x1, y1),
-                    (x2, y1),
-                    (x2, y2),
-                    (x1, y2),
-                ];
+                let rect_points = vec![(x1, y1), (x2, y1), (x2, y2), (x1, y2)];
                 for &(x, y) in &rect_points {
                     let x_norm = x / annotation.image_width as f64;
                     let y_norm = y / annotation.image_height as f64;
@@ -261,12 +320,7 @@ fn process_annotation(
             let (x_min, y_min, x_max, y_max) = shape.points.iter().fold(
                 (f64::MAX, f64::MAX, f64::MIN, f64::MIN),
                 |(x_min, y_min, x_max, y_max), &(x, y)| {
-                    (
-                        x_min.min(x),
-                        y_min.min(y),
-                        x_max.max(x),
-                        y_max.max(y),
-                    )
+                    (x_min.min(x), y_min.min(y), x_max.max(x), y_max.max(y))
                 },
             );
 
@@ -275,18 +329,28 @@ fn process_annotation(
             let width = (x_max - x_min) / annotation.image_width as f64;
             let height = (y_max - y_min) / annotation.image_height as f64;
 
-            yolo_data.push_str(&format!("{} {:.6} {:.6} {:.6} {:.6}\n", class_id, x_center, y_center, width, height));
+            yolo_data.push_str(&format!(
+                "{} {:.6} {:.6} {:.6} {:.6}\n",
+                class_id, x_center, y_center, width, height
+            ));
         }
     }
 
-    let output_path = labels_dir.join(sanitize_filename::sanitize(path.file_stem().unwrap().to_str().unwrap())).with_extension("txt");
+    let output_path = labels_dir
+        .join(sanitize_filename::sanitize(
+            path.file_stem().unwrap().to_str().unwrap(),
+        ))
+        .with_extension("txt");
     let mut file = File::create(output_path).expect("Failed to create YOLO data file");
-    file.write_all(yolo_data.as_bytes()).expect("Failed to write YOLO data");
+    file.write_all(yolo_data.as_bytes())
+        .expect("Failed to write YOLO data");
 
     // Copy the image to the images directory
     let image_path = base_dir.join(&annotation.image_path);
     if image_path.exists() {
-        let image_output_path = images_dir.join(sanitize_filename::sanitize(image_path.file_name().unwrap().to_str().unwrap()));
+        let image_output_path = images_dir.join(sanitize_filename::sanitize(
+            image_path.file_name().unwrap().to_str().unwrap(),
+        ));
         copy(&image_path, &image_output_path).expect("Failed to copy image");
     } else {
         eprintln!("Image file not found: {:?}", image_path);
