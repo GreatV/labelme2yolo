@@ -108,7 +108,15 @@ fn read_and_parse_json(path: &Path) -> Option<ImageAnnotation> {
 
 fn main() {
     let args = Args::parse();
+
     let dirname = PathBuf::from(&args.json_dir);
+
+    // Check if args.json_dir exists
+    if !dirname.exists() {
+        eprintln!("The specified json_dir does not exist: {}", args.json_dir);
+        return;
+    }
+
     let pattern = dirname.join("**/*.json");
     let labels_dir = dirname.join("YOLODataset/labels");
     let images_dir = dirname.join("YOLODataset/images");
@@ -352,7 +360,24 @@ fn process_annotation(
             image_path.file_name().unwrap().to_str().unwrap(),
         ));
         copy(&image_path, &image_output_path).expect("Failed to copy image");
+    } else if !annotation.image_data.is_empty() {
+        // Decode base64 image data and write to file
+        let image_data =
+            base64::decode(&annotation.image_data).expect("Failed to decode image data");
+        let image_output_path = images_dir.join(sanitize_filename::sanitize(
+            Path::new(&annotation.image_path)
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap(),
+        ));
+        let mut file = File::create(&image_output_path).expect("Failed to create image file");
+        file.write_all(&image_data)
+            .expect("Failed to write image data");
     } else {
-        eprintln!("Image file not found: {:?}", image_path);
+        eprintln!(
+            "Image file not found and image data is empty: {:?}",
+            image_path
+        );
     }
 }
