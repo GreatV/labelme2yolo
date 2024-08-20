@@ -95,12 +95,12 @@ fn read_and_parse_json(path: &Path) -> Option<ImageAnnotation> {
         Ok(content) => match serde_json::from_str::<ImageAnnotation>(&content) {
             Ok(annotation) => Some(annotation),
             Err(e) => {
-                eprintln!("Failed to parse JSON: {:?}", e);
+                eprintln!("Failed to parse JSON ({}): {:?}", path.display(), e);
                 None
             }
         },
         Err(e) => {
-            eprintln!("Failed to read file: {:?}", e);
+            eprintln!("Failed to read file ({}): {:?}", path.display(), e);
             None
         }
     }
@@ -108,7 +108,15 @@ fn read_and_parse_json(path: &Path) -> Option<ImageAnnotation> {
 
 fn main() {
     let args = Args::parse();
+
     let dirname = PathBuf::from(&args.json_dir);
+
+    // Check if args.json_dir exists
+    if !dirname.exists() {
+        eprintln!("The specified json_dir does not exist: {}", args.json_dir);
+        return;
+    }
+
     let pattern = dirname.join("**/*.json");
     let labels_dir = dirname.join("YOLODataset/labels");
     let images_dir = dirname.join("YOLODataset/images");
@@ -161,87 +169,100 @@ fn main() {
     }
 
     // Create progress bars
-    let train_pb = Arc::new(Mutex::new(ProgressBar::new(train_annotations.len() as u64)));
-    train_pb.lock().unwrap().set_style(ProgressStyle::default_bar()
-        .template("{spinner:.green} [Train] [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
-        .progress_chars("#>-"));
-
-    let val_pb = Arc::new(Mutex::new(ProgressBar::new(val_annotations.len() as u64)));
-    val_pb.lock().unwrap().set_style(ProgressStyle::default_bar()
-        .template("{spinner:.green} [Val] [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
-        .progress_chars("#>-"));
-
-    let test_pb = Arc::new(Mutex::new(ProgressBar::new(test_annotations.len() as u64)));
-    test_pb.lock().unwrap().set_style(ProgressStyle::default_bar()
-        .template("{spinner:.green} [Test] [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
-        .progress_chars("#>-"));
+    let train_pb = create_progress_bar(train_annotations.len() as u64, "Train");
+    let val_pb = create_progress_bar(val_annotations.len() as u64, "Val");
+    let test_pb = create_progress_bar(test_annotations.len() as u64, "Test");
 
     // Process train_annotations in parallel
-    train_annotations.par_iter().for_each(|(path, annotation)| {
-        let mut label_map_guard = label_map.lock().unwrap();
-        let mut next_class_id_guard = next_class_id.lock().unwrap();
-        process_annotation(
-            path,
-            annotation,
-            &train_labels_dir,
-            &train_images_dir,
-            &mut label_map_guard,
-            &mut next_class_id_guard,
-            &args,
-            &dirname,
-        );
-        train_pb.lock().unwrap().inc(1);
-    });
-    train_pb
-        .lock()
-        .unwrap()
-        .finish_with_message("Train processing complete");
+    process_annotations_in_parallel(
+        &train_annotations,
+        &train_labels_dir,
+        &train_images_dir,
+        &label_map,
+        &next_class_id,
+        &args,
+        &dirname,
+        &train_pb,
+    );
+    train_pb.finish_with_message("Train processing complete");
 
     // Process val_annotations in parallel
-    val_annotations.par_iter().for_each(|(path, annotation)| {
-        let mut label_map_guard = label_map.lock().unwrap();
-        let mut next_class_id_guard = next_class_id.lock().unwrap();
-        process_annotation(
-            path,
-            annotation,
-            &val_labels_dir,
-            &val_images_dir,
-            &mut label_map_guard,
-            &mut next_class_id_guard,
-            &args,
-            &dirname,
-        );
-        val_pb.lock().unwrap().inc(1);
-    });
-    val_pb
-        .lock()
-        .unwrap()
-        .finish_with_message("Val processing complete");
+    process_annotations_in_parallel(
+        &val_annotations,
+        &val_labels_dir,
+        &val_images_dir,
+        &label_map,
+        &next_class_id,
+        &args,
+        &dirname,
+        &val_pb,
+    );
+    val_pb.finish_with_message("Val processing complete");
 
     // Process test_annotations in parallel
     if let (Some(test_labels_dir), Some(test_images_dir)) = (test_labels_dir, test_images_dir) {
-        test_annotations.par_iter().for_each(|(path, annotation)| {
-            let mut label_map_guard = label_map.lock().unwrap();
-            let mut next_class_id_guard = next_class_id.lock().unwrap();
-            process_annotation(
-                path,
-                annotation,
-                &test_labels_dir,
-                &test_images_dir,
-                &mut label_map_guard,
-                &mut next_class_id_guard,
-                &args,
-                &dirname,
-            );
-            test_pb.lock().unwrap().inc(1);
-        });
-        test_pb
-            .lock()
-            .unwrap()
-            .finish_with_message("Test processing complete");
+        process_annotations_in_parallel(
+            &test_annotations,
+            &test_labels_dir,
+            &test_images_dir,
+            &label_map,
+            &next_class_id,
+            &args,
+            &dirname,
+            &test_pb,
+        );
+        test_pb.finish_with_message("Test processing complete");
     }
 
     // Create dataset.yaml file after processing annotations
+    create_dataset_yaml(&dirname, &args, &label_map);
+}
+
+fn create_progress_bar(len: u64, label: &str) -> ProgressBar {
+    let pb = ProgressBar::new(len);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template(&format!(
+                "{{spinner:.green}} [{}] [{{elapsed_precise}}] [{{bar:40.cyan/blue}}] {{pos}}/{{len}} ({{eta}})",
+                label
+            ))
+            .progress_chars("#>-"),
+    );
+    pb
+}
+
+fn process_annotations_in_parallel(
+    annotations: &[(PathBuf, ImageAnnotation)],
+    labels_dir: &Path,
+    images_dir: &Path,
+    label_map: &Arc<Mutex<HashMap<String, usize>>>,
+    next_class_id: &Arc<Mutex<usize>>,
+    args: &Args,
+    base_dir: &Path,
+    pb: &ProgressBar,
+) {
+    annotations.par_iter().for_each(|(path, annotation)| {
+        let mut label_map_guard = label_map.lock().unwrap();
+        let mut next_class_id_guard = next_class_id.lock().unwrap();
+        process_annotation(
+            path,
+            annotation,
+            labels_dir,
+            images_dir,
+            &mut label_map_guard,
+            &mut next_class_id_guard,
+            args,
+            base_dir,
+        );
+        pb.inc(1);
+    });
+}
+
+fn create_dataset_yaml(
+    dirname: &Path,
+    args: &Args,
+    label_map: &Arc<Mutex<HashMap<String, usize>>>,
+) {
     let dataset_yaml_path = dirname.join("YOLODataset/dataset.yaml");
     let mut dataset_yaml =
         File::create(dataset_yaml_path).expect("Failed to create dataset.yaml file");
@@ -352,7 +373,36 @@ fn process_annotation(
             image_path.file_name().unwrap().to_str().unwrap(),
         ));
         copy(&image_path, &image_output_path).expect("Failed to copy image");
+    } else if !annotation.image_data.is_empty() {
+        // Decode base64 image data and write to file
+        let image_data =
+            base64::decode(&annotation.image_data).expect("Failed to decode image data");
+        let extension = match image_path.extension().and_then(|ext| ext.to_str()) {
+            Some(ext) => {
+                let ext_lower = ext.to_lowercase();
+                match ext_lower.as_str() {
+                    "jpg" | "jpeg" => "jpeg",
+                    _ => "png",
+                }
+            }
+            None => "png",
+        };
+        let image_output_path = images_dir
+            .join(sanitize_filename::sanitize(
+                Path::new(&annotation.image_path)
+                    .file_stem()
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+            ))
+            .with_extension(extension);
+        let mut file = File::create(&image_output_path).expect("Failed to create image file");
+        file.write_all(&image_data)
+            .expect("Failed to write image data");
     } else {
-        eprintln!("Image file not found: {:?}", image_path);
+        eprintln!(
+            "Image file not found and image data is empty: {:?}",
+            image_path
+        );
     }
 }
