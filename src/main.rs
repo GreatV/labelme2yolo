@@ -1,6 +1,8 @@
 use clap::{Parser, ValueEnum};
+use env_logger;
 use glob::glob;
 use indicatif::{ProgressBar, ProgressStyle};
+use log::{error, info, warn};
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
@@ -33,7 +35,7 @@ struct ImageAnnotation {
     flags: Option<HashMap<String, bool>>,
     shapes: Vec<Shape>,
     image_path: String,
-    image_data: String,
+    image_data: Option<String>,
     image_height: u32,
     image_width: u32,
 }
@@ -95,27 +97,30 @@ fn read_and_parse_json(path: &Path) -> Option<ImageAnnotation> {
         Ok(content) => match serde_json::from_str::<ImageAnnotation>(&content) {
             Ok(annotation) => Some(annotation),
             Err(e) => {
-                eprintln!("Failed to parse JSON ({}): {:?}", path.display(), e);
+                error!("Failed to parse JSON ({}): {:?}", path.display(), e);
                 None
             }
         },
         Err(e) => {
-            eprintln!("Failed to read file ({}): {:?}", path.display(), e);
+            error!("Failed to read file ({}): {:?}", path.display(), e);
             None
         }
     }
 }
 
 fn main() {
+    env_logger::init();
     let args = Args::parse();
 
     let dirname = PathBuf::from(&args.json_dir);
 
     // Check if args.json_dir exists
     if !dirname.exists() {
-        eprintln!("The specified json_dir does not exist: {}", args.json_dir);
+        error!("The specified json_dir does not exist: {}", args.json_dir);
         return;
     }
+
+    info!("Starting the conversion process...");
 
     let pattern = dirname.join("**/*.json");
     let labels_dir = dirname.join("YOLODataset/labels");
@@ -151,6 +156,9 @@ fn main() {
             }
         }
     }
+
+    info!("Read and parsed {} JSON files.", annotations.len());
+
     // Shuffle and split the annotations into train, val, and test sets
     let seed: u64 = 42; // Fixed random seed
     let mut rng = StdRng::seed_from_u64(seed);
@@ -159,6 +167,14 @@ fn main() {
     let val_size = (annotations.len() as f32 * args.val_size).ceil() as usize;
     let (test_annotations, rest_annotations) = annotations.split_at(test_size);
     let (val_annotations, train_annotations) = rest_annotations.split_at(val_size);
+
+    info!(
+        "Split data into {} training, {} validation, and {} test annotations.",
+        train_annotations.len(),
+        val_annotations.len(),
+        test_annotations.len()
+    );
+
     // Update label_map from label_list if not empty
     if !args.label_list.is_empty() {
         let mut label_map_guard = label_map.lock().unwrap();
@@ -174,6 +190,7 @@ fn main() {
     let test_pb = create_progress_bar(test_annotations.len() as u64, "Test");
 
     // Process train_annotations in parallel
+    info!("Processing training annotations...");
     process_annotations_in_parallel(
         &train_annotations,
         &train_labels_dir,
@@ -187,6 +204,7 @@ fn main() {
     train_pb.finish_with_message("Train processing complete");
 
     // Process val_annotations in parallel
+    info!("Processing validation annotations...");
     process_annotations_in_parallel(
         &val_annotations,
         &val_labels_dir,
@@ -201,6 +219,7 @@ fn main() {
 
     // Process test_annotations in parallel
     if let (Some(test_labels_dir), Some(test_images_dir)) = (test_labels_dir, test_images_dir) {
+        info!("Processing test annotations...");
         process_annotations_in_parallel(
             &test_annotations,
             &test_labels_dir,
@@ -215,7 +234,10 @@ fn main() {
     }
 
     // Create dataset.yaml file after processing annotations
+    info!("Creating dataset.yaml file...");
     create_dataset_yaml(&dirname, &args, &label_map);
+
+    info!("Conversion process completed successfully.");
 }
 
 fn create_progress_bar(len: u64, label: &str) -> ProgressBar {
@@ -300,10 +322,25 @@ fn process_annotation(
     args: &Args,
     base_dir: &Path,
 ) {
+    // Skip processing if image_path file does not exist and image_data is empty
+    let image_path = base_dir.join(&annotation.image_path);
+    if !image_path.exists()
+        && annotation
+            .image_data
+            .as_ref()
+            .map_or(true, |s| s.is_empty())
+    {
+        warn!(
+            "Skipping annotation with non-existent image_path and empty image_data: {:?}",
+            path
+        );
+        return;
+    }
+
     let mut yolo_data = String::new();
     for shape in &annotation.shapes {
         let class_id = if args.label_list.is_empty() {
-            // Generate class ID dynamically
+            // Dynamically generate class ID
             *label_map.entry(shape.label.clone()).or_insert_with(|| {
                 let id = *next_class_id;
                 *next_class_id += 1;
@@ -366,41 +403,41 @@ fn process_annotation(
     file.write_all(yolo_data.as_bytes())
         .expect("Failed to write YOLO data");
 
-    // Copy the image to the images directory
-    let image_path = base_dir.join(&annotation.image_path);
+    // Copy image to images directory
     if image_path.exists() {
         let image_output_path = images_dir.join(sanitize_filename::sanitize(
             image_path.file_name().unwrap().to_str().unwrap(),
         ));
         copy(&image_path, &image_output_path).expect("Failed to copy image");
-    } else if !annotation.image_data.is_empty() {
-        // Decode base64 image data and write to file
-        let image_data =
-            base64::decode(&annotation.image_data).expect("Failed to decode image data");
-        let extension = match image_path.extension().and_then(|ext| ext.to_str()) {
-            Some(ext) => {
-                let ext_lower = ext.to_lowercase();
-                match ext_lower.as_str() {
-                    "jpg" | "jpeg" => "jpeg",
-                    _ => "png",
+    } else if let Some(image_data) = &annotation.image_data {
+        if !image_data.is_empty() {
+            // Decode base64 image data and write to file
+            let image_data = base64::decode(image_data).expect("Failed to decode image data");
+            let extension = match image_path.extension().and_then(|ext| ext.to_str()) {
+                Some(ext) => {
+                    let ext_lower = ext.to_lowercase();
+                    match ext_lower.as_str() {
+                        "jpg" | "jpeg" => "jpeg",
+                        _ => "png",
+                    }
                 }
-            }
-            None => "png",
-        };
-        let image_output_path = images_dir
-            .join(sanitize_filename::sanitize(
-                Path::new(&annotation.image_path)
-                    .file_stem()
-                    .unwrap()
-                    .to_str()
-                    .unwrap(),
-            ))
-            .with_extension(extension);
-        let mut file = File::create(&image_output_path).expect("Failed to create image file");
-        file.write_all(&image_data)
-            .expect("Failed to write image data");
+                None => "png",
+            };
+            let image_output_path = images_dir
+                .join(sanitize_filename::sanitize(
+                    Path::new(&annotation.image_path)
+                        .file_stem()
+                        .unwrap()
+                        .to_str()
+                        .unwrap(),
+                ))
+                .with_extension(extension);
+            let mut file = File::create(&image_output_path).expect("Failed to create image file");
+            file.write_all(&image_data)
+                .expect("Failed to write image data");
+        }
     } else {
-        eprintln!(
+        warn!(
             "Image file not found and image data is empty: {:?}",
             image_path
         );
