@@ -6,13 +6,16 @@ on:
       - main
     tags:
       - '*'  # Trigger on tag pushes
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:  # Allow manual triggering
 
 permissions:
   contents: read
 
 jobs:
-  # Basic build job that runs only on the main branch
+  # Basic build job that runs on the main branch push and pull request
   basic-build:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
