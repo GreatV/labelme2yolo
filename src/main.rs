@@ -43,18 +43,22 @@ struct ImageAnnotation {
 
 // Command-line arguments parser for converting LabelMe JSON to YOLO format.
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[command(version, about = "Convert LabelMe JSON to YOLO format", long_about = None)]
 struct Args {
     // Directory containing LabelMe JSON files
-    #[arg(short = 'd', long = "json_dir")]
+    #[arg(
+        short = 'd',
+        long = "json_dir",
+        help = "Directory containing LabelMe JSON files"
+    )]
     json_dir: String,
 
     // Proportion of the dataset to use for validation
-    #[arg(long = "val_size", default_value_t = 0.2, value_parser = validate_size)]
+    #[arg(long = "val_size", default_value_t = 0.2, value_parser = validate_size, help = "Proportion of the dataset to use for validation (between 0.0 and 1.0)")]
     val_size: f32,
 
     // Proportion of the dataset to use for testing
-    #[arg(long = "test_size", default_value_t = 0.0, value_parser = validate_size)]
+    #[arg(long = "test_size", default_value_t = 0.0, value_parser = validate_size, help = "Proportion of the dataset to use for testing (between 0.0 and 1.0)")]
     test_size: f32,
 
     // Output format (bbox or polygon) for YOLO annotations
@@ -62,16 +66,24 @@ struct Args {
         long = "output_format",
         visible_alias = "format",
         value_enum,
-        default_value = "bbox"
+        default_value = "bbox",
+        help = "Output format for YOLO annotations: 'bbox' or 'polygon'"
     )]
     output_format: Format,
 
     // List of labels in the dataset
-    #[arg(use_value_delimiter = true)]
+    #[arg(
+        use_value_delimiter = true,
+        help = "Comma-separated list of labels in the dataset"
+    )]
     label_list: Vec<String>,
 
     // Seed for random shuffling
-    #[arg(long = "seed", default_value_t = 42)]
+    #[arg(
+        long = "seed",
+        default_value_t = 42,
+        help = "Seed for random shuffling"
+    )]
     seed: u64,
 }
 
@@ -103,32 +115,30 @@ fn main() {
 
     info!("Starting the conversion process...");
 
-    let output_dirs = match setup_output_directories(&args, &dirname) {
-        Ok(dirs) => dirs,
-        Err(e) => {
-            error!("Failed to set up output directories: {}", e);
-            return;
+    match setup_output_directories(&args, &dirname) {
+        Ok(output_dirs) => {
+            let annotations = read_and_parse_json_files(&dirname);
+            info!("Read and parsed {} JSON files.", annotations.len());
+
+            let split_data =
+                split_annotations(annotations, args.val_size, args.test_size, args.seed);
+
+            let label_map = Arc::new(Mutex::new(HashMap::new()));
+            let next_class_id = Arc::new(AtomicUsize::new(0));
+
+            // Preinitialize the label map with all possible labels from the dataset
+            initialize_label_map(&split_data, &label_map, &next_class_id, &args);
+
+            process_all_annotations(&split_data, &output_dirs, &label_map, &args, &dirname);
+
+            info!("Creating dataset.yaml file...");
+            if let Err(e) = create_dataset_yaml(&dirname, &args, &label_map) {
+                error!("Failed to create dataset.yaml: {}", e);
+            } else {
+                info!("Conversion process completed successfully.");
+            }
         }
-    };
-
-    let annotations = read_and_parse_json_files(&dirname);
-    info!("Read and parsed {} JSON files.", annotations.len());
-
-    let split_data = split_annotations(annotations, args.val_size, args.test_size, args.seed);
-
-    let label_map = Arc::new(Mutex::new(HashMap::new()));
-    let next_class_id = Arc::new(AtomicUsize::new(0));
-
-    // Preinitialize the label map with all possible labels from the dataset
-    initialize_label_map(&split_data, &label_map, &next_class_id, &args);
-
-    process_all_annotations(&split_data, &output_dirs, &label_map, &args, &dirname);
-
-    info!("Creating dataset.yaml file...");
-    if let Err(e) = create_dataset_yaml(&dirname, &args, &label_map) {
-        error!("Failed to create dataset.yaml: {}", e);
-    } else {
-        info!("Conversion process completed successfully.");
+        Err(e) => error!("Failed to set up output directories: {}", e),
     }
 }
 
@@ -346,9 +356,11 @@ fn process_annotations_in_parallel(
 ) {
     annotations.par_chunks(50).for_each(|chunk| {
         chunk.iter().for_each(|(path, annotation)| {
-            process_annotation(
+            if let Err(e) = process_annotation(
                 path, annotation, labels_dir, images_dir, label_map, args, base_dir,
-            );
+            ) {
+                error!("Failed to process annotation {}: {}", path.display(), e);
+            }
         });
         pb.inc(chunk.len() as u64);
     });
@@ -363,7 +375,7 @@ fn process_annotation(
     label_map: &Arc<Mutex<HashMap<String, usize>>>,
     args: &Args,
     base_dir: &Path,
-) {
+) -> std::io::Result<()> {
     let image_path = base_dir.join(&annotation.image_path);
     if !image_path.exists()
         && annotation
@@ -375,7 +387,7 @@ fn process_annotation(
             "Skipping annotation with non-existent image_path and empty image_data: {:?}",
             path
         );
-        return;
+        return Ok(());
     }
 
     let yolo_data = convert_to_yolo_format(annotation, args, label_map);
@@ -383,17 +395,15 @@ fn process_annotation(
     let sanitized_name = sanitize_filename::sanitize(path.file_stem().unwrap().to_str().unwrap());
     let output_path = labels_dir.join(&sanitized_name).with_extension("txt");
 
-    let file = File::create(&output_path).expect("Failed to create YOLO data file");
+    let file = File::create(&output_path)?;
     let mut writer = BufWriter::new(file);
-    writer
-        .write_all(yolo_data.as_bytes())
-        .expect("Failed to write YOLO data");
+    writer.write_all(yolo_data.as_bytes())?;
 
     if image_path.exists() {
         let image_output_path = images_dir
             .join(sanitized_name)
             .with_extension(image_path.extension().unwrap_or_default());
-        copy(&image_path, &image_output_path).expect("Failed to copy image");
+        copy(&image_path, &image_output_path)?;
     } else if let Some(image_data) = &annotation.image_data {
         if !image_data.is_empty() {
             let image_data = base64::decode(image_data).expect("Failed to decode image data");
@@ -405,11 +415,9 @@ fn process_annotation(
                 None => "png",
             };
             let image_output_path = images_dir.join(sanitized_name).with_extension(extension);
-            let file = File::create(&image_output_path).expect("Failed to create image file");
+            let file = File::create(&image_output_path)?;
             let mut writer = BufWriter::new(file);
-            writer
-                .write_all(&image_data)
-                .expect("Failed to write image data");
+            writer.write_all(&image_data)?;
         }
     } else {
         warn!(
@@ -417,6 +425,8 @@ fn process_annotation(
             image_path
         );
     }
+
+    Ok(())
 }
 
 // Convert an annotation to YOLO format (bounding box or polygon)
