@@ -23,23 +23,29 @@ pip install labelme2yolo
 
 ## Arguments
 
-**--json\_dir** LabelMe JSON files folder path.
+**[LABEL_LIST]...** Comma-separated list of labels in the dataset.
 
-**--val\_size (Optional)** Validation dataset size, for example 0.2 means 20% for validation.
+## Options
 
-**--test\_size (Optional)** Test dataset size, for example 0.1 means 10% for Test.
+**-d, --json_dir <JSON_DIR>** Directory containing LabelMe JSON files.
 
-**--json\_name (Optional)** Convert single LabelMe JSON file.
+**--val_size <VAL_SIZE>** Proportion of the dataset to use for validation (between 0.0 and 1.0) [default: 0.2].
 
-**--output\_format (Optional)** The output format of label.
+**--test_size <TEST_SIZE>** Proportion of the dataset to use for testing (between 0.0 and 1.0) [default: 0].
 
-**--label\_list (Optional)** The pre-assigned category labels.
+**--output_format <OUTPUT_FORMAT>** Output format for YOLO annotations: 'bbox' or 'polygon' [default: bbox] [aliases: format] [possible values: polygon, bbox].
+
+**--seed <SEED>** Seed for random shuffling [default: 42].
+
+**-h, --help** Print help.
+
+**-V, --version** Print version.
 
 ## How to Use
 
 ### 1. Converting JSON files and splitting training, validation datasets
 
-You may need to place all LabelMe JSON files under **labelme\_json\_dir** and then run the following command:
+You may need to place all LabelMe JSON files under **labelme_json_dir** and then run the following command:
 
 ```shell
 labelme2yolo --json_dir /path/to/labelme_json_dir/
@@ -55,9 +61,9 @@ This tool will generate dataset labels and images with YOLO format in different 
 /path/to/labelme_json_dir/YOLODataset/dataset.yaml
 ```
 
-### 2. Converting JSON files and splitting training, validation, and test datasets with --val\_size and --test\_size
+### 2. Converting JSON files and splitting training, validation, and test datasets with --val_size and --test_size
 
-You may need to place all LabelMe JSON files under **labelme\_json\_dir** and then run the following command:
+You may need to place all LabelMe JSON files under **labelme_json_dir** and then run the following command:
 
 ```shell
 labelme2yolo --json_dir /path/to/labelme_json_dir/ --val_size 0.15 --test_size 0.15
@@ -81,7 +87,3 @@ This tool will generate dataset labels and images with YOLO format in different 
 pip install maturin
 maturin develop
 ```
-
-## License
-
-`labelme2yolo` is distributed under the terms of the [MIT](https://spdx.org/licenses/MIT.html) license.
