@@ -154,7 +154,10 @@ struct OutputDirs {
 /// Safely create output directories and return their paths
 fn create_output_directory(path: &Path) -> std::io::Result<PathBuf> {
     if path.exists() {
-        warn!("Directory {:?} already exists. Deleting and recreating it.", path);
+        warn!(
+            "Directory {:?} already exists. Deleting and recreating it.",
+            path
+        );
         fs::remove_dir_all(path)?;
     }
     fs::create_dir_all(path)?;
@@ -362,7 +365,12 @@ fn process_annotation(
     base_dir: &Path,
 ) {
     let image_path = base_dir.join(&annotation.image_path);
-    if !image_path.exists() && annotation.image_data.as_ref().map_or(true, |s| s.is_empty()) {
+    if !image_path.exists()
+        && annotation
+            .image_data
+            .as_ref()
+            .map_or(true, |s| s.is_empty())
+    {
         warn!(
             "Skipping annotation with non-existent image_path and empty image_data: {:?}",
             path
@@ -370,7 +378,8 @@ fn process_annotation(
         return;
     }
 
-    let (yolo_data, should_skip) = convert_to_yolo_format(annotation, args, label_map, next_class_id);
+    let (yolo_data, should_skip) =
+        convert_to_yolo_format(annotation, args, label_map, next_class_id);
 
     if should_skip {
         return;
@@ -380,10 +389,13 @@ fn process_annotation(
     let output_path = labels_dir.join(&sanitized_name).with_extension("txt");
 
     let mut file = File::create(&output_path).expect("Failed to create YOLO data file");
-    file.write_all(yolo_data.as_bytes()).expect("Failed to write YOLO data");
+    file.write_all(yolo_data.as_bytes())
+        .expect("Failed to write YOLO data");
 
     if image_path.exists() {
-        let image_output_path = images_dir.join(sanitized_name).with_extension(image_path.extension().unwrap_or_default());
+        let image_output_path = images_dir
+            .join(sanitized_name)
+            .with_extension(image_path.extension().unwrap_or_default());
         copy(&image_path, &image_output_path).expect("Failed to copy image");
     } else if let Some(image_data) = &annotation.image_data {
         if !image_data.is_empty() {
@@ -397,10 +409,14 @@ fn process_annotation(
             };
             let image_output_path = images_dir.join(sanitized_name).with_extension(extension);
             let mut file = File::create(&image_output_path).expect("Failed to create image file");
-            file.write_all(&image_data).expect("Failed to write image data");
+            file.write_all(&image_data)
+                .expect("Failed to write image data");
         }
     } else {
-        warn!("Image file not found and image data is empty: {:?}", image_path);
+        warn!(
+            "Image file not found and image data is empty: {:?}",
+            image_path
+        );
     }
 }
 
@@ -436,7 +452,10 @@ fn convert_to_yolo_format(
             }
             Format::Bbox => {
                 let (x_center, y_center, width, height) = calculate_bounding_box(annotation, shape);
-                yolo_data.push_str(&format!("{} {:.6} {:.6} {:.6} {:.6}\n", class_id, x_center, y_center, width, height));
+                yolo_data.push_str(&format!(
+                    "{} {:.6} {:.6} {:.6} {:.6}\n",
+                    class_id, x_center, y_center, width, height
+                ));
             }
         }
     }

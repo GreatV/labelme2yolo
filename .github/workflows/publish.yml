@@ -1,47 +1,16 @@
-name: CI
+name: publish
 
 on:
   push:
-    branches:
-      - main
     tags:
-      - '*'  # Trigger on tag pushes
-  pull_request:
-    branches:
-      - main
-  workflow_dispatch:  # Allow manual triggering
+      - '*'
 
 permissions:
   contents: read
 
 jobs:
-  # Basic build job that runs on the main branch push and pull request
-  basic-build:
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-      - name: Cache Rust Cargo
-        uses: actions/cache@v3
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-      - name: Build and Test
-        run: |
-          cargo build --release
-          cargo test --release
-
-  # Full build jobs that run only on tag pushes
   linux:
     runs-on: ${{ matrix.platform.runner }}
-    if: startsWith(github.ref, 'refs/tags/')
     strategy:
       matrix:
         platform:
@@ -59,18 +28,6 @@ jobs:
             target: ppc64le
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-      - name: Cache Rust Cargo
-        uses: actions/cache@v3
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -86,7 +43,6 @@ jobs:
 
   musllinux:
     runs-on: ${{ matrix.platform.runner }}
-    if: startsWith(github.ref, 'refs/tags/')
     strategy:
       matrix:
         platform:
@@ -100,18 +56,6 @@ jobs:
             target: armv7
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-      - name: Cache Rust Cargo
-        uses: actions/cache@v3
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -127,7 +71,6 @@ jobs:
 
   windows:
     runs-on: ${{ matrix.platform.runner }}
-    if: startsWith(github.ref, 'refs/tags/')
     strategy:
       matrix:
         platform:
@@ -137,18 +80,6 @@ jobs:
             target: x86
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-      - name: Cache Rust Cargo
-        uses: actions/cache@v3
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -163,7 +94,6 @@ jobs:
 
   macos:
     runs-on: ${{ matrix.platform.runner }}
-    if: startsWith(github.ref, 'refs/tags/')
     strategy:
       matrix:
         platform:
@@ -173,18 +103,6 @@ jobs:
             target: aarch64
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-      - name: Cache Rust Cargo
-        uses: actions/cache@v3
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
@@ -199,7 +117,6 @@ jobs:
 
   sdist:
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v4
       - name: Build sdist
