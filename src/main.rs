@@ -1,5 +1,4 @@
 use clap::{Parser, ValueEnum};
-use dashmap::DashMap;
 use env_logger;
 use glob::glob;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -12,12 +11,12 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
 use std::fs::{self, copy, File};
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
-    Arc,
+    Arc, Mutex,
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -42,23 +41,23 @@ struct ImageAnnotation {
     image_width: u32,
 }
 
-/// Command-line arguments parser for converting LabelMe JSON to YOLO format.
+// Command-line arguments parser for converting LabelMe JSON to YOLO format.
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// Directory containing LabelMe JSON files
+    // Directory containing LabelMe JSON files
     #[arg(short = 'd', long = "json_dir")]
     json_dir: String,
 
-    /// Proportion of the dataset to use for validation
+    // Proportion of the dataset to use for validation
     #[arg(long = "val_size", default_value_t = 0.2, value_parser = validate_size)]
     val_size: f32,
 
-    /// Proportion of the dataset to use for testing
+    // Proportion of the dataset to use for testing
     #[arg(long = "test_size", default_value_t = 0.0, value_parser = validate_size)]
     test_size: f32,
 
-    /// Output format (bbox or polygon) for YOLO annotations
+    // Output format (bbox or polygon) for YOLO annotations
     #[arg(
         long = "output_format",
         visible_alias = "format",
@@ -67,23 +66,23 @@ struct Args {
     )]
     output_format: Format,
 
-    /// List of labels in the dataset
+    // List of labels in the dataset
     #[arg(use_value_delimiter = true)]
     label_list: Vec<String>,
 
-    /// Seed for random shuffling
+    // Seed for random shuffling
     #[arg(long = "seed", default_value_t = 42)]
     seed: u64,
 }
 
-/// Enumeration for the YOLO output format
+// Enumeration for the YOLO output format
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
 enum Format {
     Polygon,
     Bbox,
 }
 
-/// Validate that the size is between 0.0 and 1.0
+// Validate that the size is between 0.0 and 1.0
 fn validate_size(s: &str) -> Result<f32, String> {
     match f32::from_str(s) {
         Ok(val) if val >= 0.0 && val <= 1.0 => Ok(val),
@@ -117,21 +116,13 @@ fn main() {
 
     let split_data = split_annotations(annotations, args.val_size, args.test_size, args.seed);
 
-    let label_map = Arc::new(DashMap::new());
+    let label_map = Arc::new(Mutex::new(HashMap::new()));
     let next_class_id = Arc::new(AtomicUsize::new(0));
 
-    if !args.label_list.is_empty() {
-        initialize_label_map(&args.label_list, &label_map, &next_class_id);
-    }
+    // Preinitialize the label map with all possible labels from the dataset
+    initialize_label_map(&split_data, &label_map, &next_class_id, &args);
 
-    process_all_annotations(
-        &split_data,
-        &output_dirs,
-        &label_map,
-        &next_class_id,
-        &args,
-        &dirname,
-    );
+    process_all_annotations(&split_data, &output_dirs, &label_map, &args, &dirname);
 
     info!("Creating dataset.yaml file...");
     if let Err(e) = create_dataset_yaml(&dirname, &args, &label_map) {
@@ -141,7 +132,7 @@ fn main() {
     }
 }
 
-/// Struct to hold the paths to the output directories for train/val/test splits
+// Struct to hold the paths to the output directories for train/val/test splits
 struct OutputDirs {
     train_labels_dir: PathBuf,
     val_labels_dir: PathBuf,
@@ -151,7 +142,7 @@ struct OutputDirs {
     test_images_dir: Option<PathBuf>,
 }
 
-/// Safely create output directories and return their paths
+// Safely create output directories and return their paths
 fn create_output_directory(path: &Path) -> std::io::Result<PathBuf> {
     if path.exists() {
         warn!(
@@ -164,7 +155,7 @@ fn create_output_directory(path: &Path) -> std::io::Result<PathBuf> {
     Ok(path.to_path_buf())
 }
 
-/// Set up the directory structure for YOLO dataset output
+// Set up the directory structure for YOLO dataset output
 fn setup_output_directories(args: &Args, dirname: &Path) -> std::io::Result<OutputDirs> {
     let labels_dir = create_output_directory(&dirname.join("YOLODataset/labels"))?;
     let images_dir = create_output_directory(&dirname.join("YOLODataset/images"))?;
@@ -193,21 +184,24 @@ fn setup_output_directories(args: &Args, dirname: &Path) -> std::io::Result<Outp
     })
 }
 
-/// Read and parse JSON files from the specified directory
+// Read and parse JSON files from the specified directory
 fn read_and_parse_json_files(dirname: &Path) -> Vec<(PathBuf, ImageAnnotation)> {
     let pattern = dirname.join("**/*.json");
-    let annotations: Vec<_> = glob(pattern.to_str().expect("Failed to convert path to string"))
+    let mut entries: Vec<_> = glob(pattern.to_str().expect("Failed to convert path to string"))
         .expect("Failed to read glob pattern")
-        .filter_map(|entry| {
-            entry
-                .ok()
-                .and_then(|path| read_and_parse_json(&path).map(|annotation| (path, annotation)))
-        })
+        .filter_map(|entry| entry.ok())
         .collect();
-    annotations
+
+    // Sort the entries before processing
+    entries.sort();
+
+    entries
+        .into_par_iter()
+        .filter_map(|path| read_and_parse_json(&path).map(|annotation| (path, annotation)))
+        .collect()
 }
 
-/// Read and parse a single JSON file into an ImageAnnotation struct
+// Read and parse a single JSON file into an ImageAnnotation struct
 fn read_and_parse_json(path: &Path) -> Option<ImageAnnotation> {
     fs::read_to_string(path).ok().and_then(|content| {
         serde_json::from_str::<ImageAnnotation>(&content)
@@ -216,14 +210,14 @@ fn read_and_parse_json(path: &Path) -> Option<ImageAnnotation> {
     })
 }
 
-/// Struct to hold the split datasets for training, validation, and testing
+// Struct to hold the split datasets for training, validation, and testing
 struct SplitData {
     train_annotations: Vec<(PathBuf, ImageAnnotation)>,
     val_annotations: Vec<(PathBuf, ImageAnnotation)>,
     test_annotations: Vec<(PathBuf, ImageAnnotation)>,
 }
 
-/// Split the annotations into training, validation, and testing sets
+// Split the annotations into training, validation, and testing sets
 fn split_annotations(
     mut annotations: Vec<(PathBuf, ImageAnnotation)>,
     val_size: f32,
@@ -246,24 +240,42 @@ fn split_annotations(
     }
 }
 
-/// Initialize the label map with the provided label list
+// Initialize the label map with labels found in the dataset or specified in label_list
 fn initialize_label_map(
-    label_list: &[String],
-    label_map: &Arc<DashMap<String, usize>>,
+    split_data: &SplitData,
+    label_map: &Arc<Mutex<HashMap<String, usize>>>,
     next_class_id: &Arc<AtomicUsize>,
+    args: &Args,
 ) {
-    for (id, label) in label_list.iter().enumerate() {
-        label_map.insert(label.clone(), id);
+    let mut map = label_map.lock().unwrap();
+
+    // If label_list is specified, use it to initialize label_map
+    if !args.label_list.is_empty() {
+        for (id, label) in args.label_list.iter().enumerate() {
+            map.insert(label.clone(), id);
+        }
+        next_class_id.store(args.label_list.len(), Ordering::Relaxed);
+    } else {
+        // Otherwise, use labels found in the dataset
+        split_data
+            .train_annotations
+            .iter()
+            .chain(split_data.val_annotations.iter())
+            .chain(split_data.test_annotations.iter())
+            .flat_map(|(_, annotation)| annotation.shapes.iter())
+            .for_each(|shape| {
+                if !map.contains_key(&shape.label) {
+                    let new_id = next_class_id.fetch_add(1, Ordering::Relaxed);
+                    map.insert(shape.label.clone(), new_id);
+                }
+            });
     }
-    next_class_id.store(label_list.len(), Ordering::Relaxed);
 }
 
-/// Process all annotations in parallel for train, val, and test splits
 fn process_all_annotations(
     split_data: &SplitData,
     output_dirs: &OutputDirs,
-    label_map: &Arc<DashMap<String, usize>>,
-    next_class_id: &Arc<AtomicUsize>,
+    label_map: &Arc<Mutex<HashMap<String, usize>>>,
     args: &Args,
     dirname: &Path,
 ) {
@@ -273,7 +285,6 @@ fn process_all_annotations(
         &output_dirs.train_labels_dir,
         &output_dirs.train_images_dir,
         label_map,
-        next_class_id,
         args,
         dirname,
         &train_pb,
@@ -286,7 +297,6 @@ fn process_all_annotations(
         &output_dirs.val_labels_dir,
         &output_dirs.val_images_dir,
         label_map,
-        next_class_id,
         args,
         dirname,
         &val_pb,
@@ -302,7 +312,6 @@ fn process_all_annotations(
             test_labels_dir,
             test_images_dir,
             label_map,
-            next_class_id,
             args,
             dirname,
             &test_pb,
@@ -311,7 +320,7 @@ fn process_all_annotations(
     }
 }
 
-/// Create a progress bar with the given length and label
+// Create a progress bar with the given length and label
 fn create_progress_bar(len: u64, label: &str) -> ProgressBar {
     let pb = ProgressBar::new(len);
     pb.set_style(
@@ -325,42 +334,33 @@ fn create_progress_bar(len: u64, label: &str) -> ProgressBar {
     pb
 }
 
-/// Process a batch of annotations in parallel
+// Process a batch of annotations in parallel
 fn process_annotations_in_parallel(
     annotations: &[(PathBuf, ImageAnnotation)],
     labels_dir: &Path,
     images_dir: &Path,
-    label_map: &Arc<DashMap<String, usize>>,
-    next_class_id: &Arc<AtomicUsize>,
+    label_map: &Arc<Mutex<HashMap<String, usize>>>,
     args: &Args,
     base_dir: &Path,
     pb: &ProgressBar,
 ) {
-    annotations.par_chunks(10).for_each(|chunk| {
+    annotations.par_chunks(50).for_each(|chunk| {
         chunk.iter().for_each(|(path, annotation)| {
             process_annotation(
-                path,
-                annotation,
-                labels_dir,
-                images_dir,
-                label_map,
-                next_class_id,
-                args,
-                base_dir,
+                path, annotation, labels_dir, images_dir, label_map, args, base_dir,
             );
         });
         pb.inc(chunk.len() as u64);
     });
 }
 
-/// Process a single annotation and convert it to YOLO format
+// Process a single annotation and convert it to YOLO format
 fn process_annotation(
     path: &Path,
     annotation: &ImageAnnotation,
     labels_dir: &Path,
     images_dir: &Path,
-    label_map: &Arc<DashMap<String, usize>>,
-    next_class_id: &Arc<AtomicUsize>,
+    label_map: &Arc<Mutex<HashMap<String, usize>>>,
     args: &Args,
     base_dir: &Path,
 ) {
@@ -378,18 +378,15 @@ fn process_annotation(
         return;
     }
 
-    let (yolo_data, should_skip) =
-        convert_to_yolo_format(annotation, args, label_map, next_class_id);
-
-    if should_skip {
-        return;
-    }
+    let yolo_data = convert_to_yolo_format(annotation, args, label_map);
 
     let sanitized_name = sanitize_filename::sanitize(path.file_stem().unwrap().to_str().unwrap());
     let output_path = labels_dir.join(&sanitized_name).with_extension("txt");
 
-    let mut file = File::create(&output_path).expect("Failed to create YOLO data file");
-    file.write_all(yolo_data.as_bytes())
+    let file = File::create(&output_path).expect("Failed to create YOLO data file");
+    let mut writer = BufWriter::new(file);
+    writer
+        .write_all(yolo_data.as_bytes())
         .expect("Failed to write YOLO data");
 
     if image_path.exists() {
@@ -408,8 +405,10 @@ fn process_annotation(
                 None => "png",
             };
             let image_output_path = images_dir.join(sanitized_name).with_extension(extension);
-            let mut file = File::create(&image_output_path).expect("Failed to create image file");
-            file.write_all(&image_data)
+            let file = File::create(&image_output_path).expect("Failed to create image file");
+            let mut writer = BufWriter::new(file);
+            writer
+                .write_all(&image_data)
                 .expect("Failed to write image data");
         }
     } else {
@@ -420,35 +419,25 @@ fn process_annotation(
     }
 }
 
-/// Convert an annotation to YOLO format (bounding box or polygon)
+// Convert an annotation to YOLO format (bounding box or polygon)
 fn convert_to_yolo_format(
     annotation: &ImageAnnotation,
     args: &Args,
-    label_map: &Arc<DashMap<String, usize>>,
-    next_class_id: &Arc<AtomicUsize>,
-) -> (String, bool) {
-    let mut yolo_data = String::new();
-    let mut should_skip = false;
+    label_map: &Arc<Mutex<HashMap<String, usize>>>,
+) -> String {
+    let mut yolo_data = String::with_capacity(annotation.shapes.len() * 64);
 
     for shape in &annotation.shapes {
-        let class_id = match label_map.get(&shape.label) {
+        let class_id = match label_map.lock().unwrap().get(&shape.label) {
             Some(class_id) => *class_id,
-            None if args.label_list.is_empty() => {
-                let new_id = next_class_id.fetch_add(1, Ordering::Relaxed);
-                label_map.insert(shape.label.clone(), new_id);
-                new_id
-            }
-            _ => {
-                should_skip = true;
-                continue;
-            }
+            None => continue,
         };
 
         match args.output_format {
             Format::Polygon => {
                 yolo_data.push_str(&format!("{}", class_id));
                 process_polygon_shape(&mut yolo_data, annotation, shape);
-                yolo_data.push_str("\n");
+                yolo_data.push('\n');
             }
             Format::Bbox => {
                 let (x_center, y_center, width, height) = calculate_bounding_box(annotation, shape);
@@ -460,10 +449,10 @@ fn convert_to_yolo_format(
         }
     }
 
-    (yolo_data, should_skip)
+    yolo_data
 }
 
-/// Process polygon shape data for YOLO format
+// Process polygon shape data for YOLO format
 fn process_polygon_shape(yolo_data: &mut String, annotation: &ImageAnnotation, shape: &Shape) {
     if shape.shape_type == "rectangle" {
         let (x1, y1) = shape.points[0];
@@ -495,7 +484,7 @@ fn process_polygon_shape(yolo_data: &mut String, annotation: &ImageAnnotation, s
     }
 }
 
-/// Calculate bounding box for YOLO format
+// Calculate bounding box for YOLO format
 fn calculate_bounding_box(annotation: &ImageAnnotation, shape: &Shape) -> (f64, f64, f64, f64) {
     let (x_min, y_min, x_max, y_max) = if shape.shape_type == "circle" {
         let (cx, cy) = shape.points[0];
@@ -519,14 +508,14 @@ fn calculate_bounding_box(annotation: &ImageAnnotation, shape: &Shape) -> (f64, 
     (x_center, y_center, width, height)
 }
 
-/// Create the dataset.yaml file for YOLO training
+// Create the dataset.yaml file for YOLO training
 fn create_dataset_yaml(
     dirname: &Path,
     args: &Args,
-    label_map: &Arc<DashMap<String, usize>>,
+    label_map: &Arc<Mutex<HashMap<String, usize>>>,
 ) -> std::io::Result<()> {
     let dataset_yaml_path = dirname.join("YOLODataset/dataset.yaml");
-    let mut dataset_yaml = File::create(&dataset_yaml_path)?;
+    let mut dataset_yaml = BufWriter::new(File::create(&dataset_yaml_path)?);
     let absolute_path = fs::canonicalize(&dirname.join("YOLODataset"))?;
     let mut yaml_content = format!(
         "path: {}\ntrain: images/train\nval: images/val\n",
@@ -541,8 +530,10 @@ fn create_dataset_yaml(
 
     // Extract and sort labels by their ID
     let mut sorted_labels: Vec<_> = label_map
+        .lock()
+        .unwrap()
         .iter()
-        .map(|entry| (entry.key().clone(), *entry.value()))
+        .map(|(label, id)| (label.clone(), *id))
         .collect();
     sorted_labels.sort_by_key(|&(_, id)| id);
 

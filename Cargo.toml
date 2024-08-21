@@ -1,6 +1,6 @@
 [package]
 name = "labelme2yolo"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -17,4 +17,3 @@ rayon = "1.5"
 base64 = "0.13"
 log = "0.4"
 env_logger = "0.9"
-dashmap = "5.0"
