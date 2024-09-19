@@ -252,7 +252,8 @@ fn read_and_parse_json_files(
         }
 
         // Create a set of image paths that have annotations
-        let annotated_images: HashSet<_> = annotations.iter().map(|(path, _)| path.clone()).collect();
+        let annotated_images: HashSet<_> =
+            annotations.iter().map(|(path, _)| path.clone()).collect();
 
         // Add background images
         let background_images: Vec<_> = image_entries
@@ -422,7 +423,11 @@ fn process_annotations_in_parallel(
             args,
             base_dir,
         ) {
-            error!("Failed to process annotation {}: {}", image_path.display(), e);
+            error!(
+                "Failed to process annotation {}: {}",
+                image_path.display(),
+                e
+            );
         }
         pb.inc(1);
     });
@@ -438,14 +443,15 @@ fn process_annotation(
     args: &Args,
     _base_dir: &Path,
 ) -> std::io::Result<()> {
-    let sanitized_name = sanitize_filename::sanitize(
-        image_path.file_stem().unwrap().to_str().unwrap(),
-    );
+    let sanitized_name =
+        sanitize_filename::sanitize(image_path.file_stem().unwrap().to_str().unwrap());
 
     if image_path.exists() {
         // Copy the image file
         let image_extension = image_path.extension().unwrap_or_default();
-        let image_output_path = images_dir.join(&sanitized_name).with_extension(image_extension);
+        let image_output_path = images_dir
+            .join(&sanitized_name)
+            .with_extension(image_extension);
         copy(&image_path, &image_output_path)?;
     } else if let Some(annotation) = annotation {
         // Handle missing image file by extracting image_data from JSON
@@ -455,7 +461,9 @@ fn process_annotation(
                 let image_bytes = base64::decode(image_data)
                     .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
                 let image_extension = infer_image_format(&image_bytes).unwrap_or("png");
-                let image_output_path = images_dir.join(&sanitized_name).with_extension(image_extension);
+                let image_output_path = images_dir
+                    .join(&sanitized_name)
+                    .with_extension(image_extension);
                 let mut file = File::create(&image_output_path)?;
                 file.write_all(&image_bytes)?;
             } else {
@@ -514,8 +522,7 @@ fn convert_to_yolo_format(
                 yolo_data.push('\n');
             }
             Format::Bbox => {
-                let (x_center, y_center, width, height) =
-                    calculate_bounding_box(annotation, shape);
+                let (x_center, y_center, width, height) = calculate_bounding_box(annotation, shape);
                 yolo_data.push_str(&format!(
                     "{} {:.6} {:.6} {:.6} {:.6}\n",
                     class_id, x_center, y_center, width, height
