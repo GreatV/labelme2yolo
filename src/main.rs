@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, copy, File};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -20,6 +20,27 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json;
 
+// Supported image formats
+const IMG_FORMATS: &[&str] = &[
+    "bmp", "dng", "jpeg", "jpg", "mpo", "png", "tif", "tiff", "webp", "pfm",
+];
+
+/// Helper function to infer image format from image bytes
+fn infer_image_format(image_bytes: &[u8]) -> Option<&'static str> {
+    if image_bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("jpg")
+    } else if image_bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        Some("png")
+    } else if image_bytes.starts_with(b"BM") {
+        Some("bmp")
+    } else if image_bytes.starts_with(&[0x47, 0x49, 0x46]) {
+        Some("gif")
+    } else {
+        None
+    }
+}
+
+// The Shape struct representing annotated shapes
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct Shape {
     label: String,
@@ -30,6 +51,7 @@ struct Shape {
     mask: Option<String>,
 }
 
+// The ImageAnnotation struct representing the annotation information of an image
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct ImageAnnotation {
@@ -42,23 +64,23 @@ struct ImageAnnotation {
     image_width: u32,
 }
 
-// Command-line arguments parser for converting LabelMe JSON to YOLO format.
+/// Command-line arguments parser for converting LabelMe JSON to YOLO format.
 #[derive(Parser, Debug)]
-#[command(version, about = "Convert LabelMe JSON to YOLO format", long_about = None)]
+#[command(version, long_about = None)]
 struct Args {
-    // Directory containing LabelMe JSON files
+    /// Directory containing LabelMe JSON files
     #[arg(short = 'd', long = "json_dir")]
     json_dir: String,
 
-    // Proportion of the dataset to use for validation
+    /// Proportion of the dataset to use for validation
     #[arg(long = "val_size", default_value_t = 0.2, value_parser = validate_size)]
     val_size: f32,
 
-    // Proportion of the dataset to use for testing
+    /// Proportion of the dataset to use for testing
     #[arg(long = "test_size", default_value_t = 0.0, value_parser = validate_size)]
     test_size: f32,
 
-    // Output format for YOLO annotations: 'bbox' or 'polygon'
+    /// Output format for YOLO annotations: 'bbox' or 'polygon'
     #[arg(
         long = "output_format",
         visible_alias = "format",
@@ -67,11 +89,15 @@ struct Args {
     )]
     output_format: Format,
 
-    // Seed for random shuffling
+    /// Seed for random shuffling
     #[arg(long = "seed", default_value_t = 42)]
     seed: u64,
 
-    // List of labels in the dataset
+    /// Flag to include images without annotations as background images
+    #[arg(long = "include_background")]
+    include_background: bool,
+
+    /// List of labels in the dataset
     #[arg(use_value_delimiter = true)]
     label_list: Vec<String>,
 }
@@ -106,11 +132,11 @@ fn main() {
 
     match setup_output_directories(&args, &dirname) {
         Ok(output_dirs) => {
-            let annotations = read_and_parse_json_files(&dirname);
-            info!("Read and parsed {} JSON files.", annotations.len());
+            let mut annotations = read_and_parse_json_files(&dirname, &args);
+            info!("Read and parsed {} files.", annotations.len());
 
             let split_data =
-                split_annotations(annotations, args.val_size, args.test_size, args.seed);
+                split_annotations(&mut annotations, args.val_size, args.test_size, args.seed);
 
             let label_map = Arc::new(Mutex::new(HashMap::new()));
             let next_class_id = Arc::new(AtomicUsize::new(0));
@@ -184,21 +210,61 @@ fn setup_output_directories(args: &Args, dirname: &Path) -> std::io::Result<Outp
     })
 }
 
-// Read and parse JSON files from the specified directory
-fn read_and_parse_json_files(dirname: &Path) -> Vec<(PathBuf, ImageAnnotation)> {
-    let pattern = dirname.join("**/*.json");
-    let mut entries: Vec<_> = glob(pattern.to_str().expect("Failed to convert path to string"))
-        .expect("Failed to read glob pattern")
+// Read and parse JSON files, and handle images without annotations efficiently
+fn read_and_parse_json_files(
+    dirname: &Path,
+    args: &Args,
+) -> Vec<(PathBuf, Option<ImageAnnotation>)> {
+    // Collect all JSON files
+    let json_pattern = format!("{}/**/*.json", dirname.display());
+    let json_entries: Vec<_> = glob(&json_pattern)
+        .expect("Failed to read JSON glob pattern")
         .filter_map(|entry| entry.ok())
         .collect();
 
-    // Sort the entries before processing
-    entries.sort();
-
-    entries
+    // Vector to store image paths and their annotations
+    let annotations_from_json: Vec<_> = json_entries
         .into_par_iter()
-        .filter_map(|path| read_and_parse_json(&path).map(|annotation| (path, annotation)))
-        .collect()
+        .filter_map(|json_path| {
+            if let Some(annotation) = read_and_parse_json(&json_path) {
+                // Determine the image path
+                let image_path = dirname.join(&annotation.image_path);
+                Some((image_path, Some(annotation)))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let mut annotations = annotations_from_json;
+
+    // Include background images if the flag is set
+    if args.include_background {
+        // Collect all image files
+        let mut image_entries = Vec::new();
+        for ext in IMG_FORMATS {
+            let pattern = format!("{}/**/*.{}", dirname.display(), ext);
+            image_entries.extend(
+                glob(&pattern)
+                    .expect("Failed to read image glob pattern")
+                    .filter_map(|entry| entry.ok()),
+            );
+        }
+
+        // Create a set of image paths that have annotations
+        let annotated_images: HashSet<_> = annotations.iter().map(|(path, _)| path.clone()).collect();
+
+        // Add background images
+        let background_images: Vec<_> = image_entries
+            .into_par_iter()
+            .filter(|image_path| !annotated_images.contains(image_path))
+            .map(|image_path| (image_path, None))
+            .collect();
+
+        annotations.extend(background_images);
+    }
+
+    annotations
 }
 
 // Read and parse a single JSON file into an ImageAnnotation struct
@@ -212,14 +278,14 @@ fn read_and_parse_json(path: &Path) -> Option<ImageAnnotation> {
 
 // Struct to hold the split datasets for training, validation, and testing
 struct SplitData {
-    train_annotations: Vec<(PathBuf, ImageAnnotation)>,
-    val_annotations: Vec<(PathBuf, ImageAnnotation)>,
-    test_annotations: Vec<(PathBuf, ImageAnnotation)>,
+    train_annotations: Vec<(PathBuf, Option<ImageAnnotation>)>,
+    val_annotations: Vec<(PathBuf, Option<ImageAnnotation>)>,
+    test_annotations: Vec<(PathBuf, Option<ImageAnnotation>)>,
 }
 
 // Split the annotations into training, validation, and testing sets
 fn split_annotations(
-    mut annotations: Vec<(PathBuf, ImageAnnotation)>,
+    annotations: &mut Vec<(PathBuf, Option<ImageAnnotation>)>,
     val_size: f32,
     test_size: f32,
     seed: u64,
@@ -230,13 +296,14 @@ fn split_annotations(
     let test_size = (annotations.len() as f32 * test_size).ceil() as usize;
     let val_size = (annotations.len() as f32 * val_size).ceil() as usize;
 
-    let (test_annotations, rest_annotations) = annotations.split_at(test_size);
-    let (val_annotations, train_annotations) = rest_annotations.split_at(val_size);
+    let test_annotations = annotations.drain(0..test_size).collect();
+    let val_annotations = annotations.drain(0..val_size).collect();
+    let train_annotations = annotations.to_vec();
 
     SplitData {
-        train_annotations: train_annotations.to_vec(),
-        val_annotations: val_annotations.to_vec(),
-        test_annotations: test_annotations.to_vec(),
+        train_annotations,
+        val_annotations,
+        test_annotations,
     }
 }
 
@@ -262,7 +329,8 @@ fn initialize_label_map(
             .iter()
             .chain(split_data.val_annotations.iter())
             .chain(split_data.test_annotations.iter())
-            .flat_map(|(_, annotation)| annotation.shapes.iter())
+            .filter_map(|(_, annotation)| annotation.as_ref())
+            .flat_map(|annotation| annotation.shapes.iter())
             .for_each(|shape| {
                 if !map.contains_key(&shape.label) {
                     let new_id = next_class_id.fetch_add(1, Relaxed);
@@ -336,7 +404,7 @@ fn create_progress_bar(len: u64, label: &str) -> ProgressBar {
 
 // Process a batch of annotations in parallel
 fn process_annotations_in_parallel(
-    annotations: &[(PathBuf, ImageAnnotation)],
+    annotations: &[(PathBuf, Option<ImageAnnotation>)],
     labels_dir: &Path,
     images_dir: &Path,
     label_map: &Arc<Mutex<HashMap<String, usize>>>,
@@ -344,76 +412,82 @@ fn process_annotations_in_parallel(
     base_dir: &Path,
     pb: &ProgressBar,
 ) {
-    annotations.par_chunks(50).for_each(|chunk| {
-        chunk.iter().for_each(|(path, annotation)| {
-            if let Err(e) = process_annotation(
-                path, annotation, labels_dir, images_dir, label_map, args, base_dir,
-            ) {
-                error!("Failed to process annotation {}: {}", path.display(), e);
-            }
-        });
-        pb.inc(chunk.len() as u64);
+    annotations.par_iter().for_each(|(image_path, annotation)| {
+        if let Err(e) = process_annotation(
+            image_path,
+            annotation.as_ref(),
+            labels_dir,
+            images_dir,
+            label_map,
+            args,
+            base_dir,
+        ) {
+            error!("Failed to process annotation {}: {}", image_path.display(), e);
+        }
+        pb.inc(1);
     });
 }
 
 // Process a single annotation and convert it to YOLO format
 fn process_annotation(
-    path: &Path,
-    annotation: &ImageAnnotation,
+    image_path: &Path,
+    annotation: Option<&ImageAnnotation>,
     labels_dir: &Path,
     images_dir: &Path,
     label_map: &Arc<Mutex<HashMap<String, usize>>>,
     args: &Args,
-    base_dir: &Path,
+    _base_dir: &Path,
 ) -> std::io::Result<()> {
-    let image_path = base_dir.join(&annotation.image_path);
-    if !image_path.exists()
-        && annotation
-            .image_data
-            .as_ref()
-            .map_or(true, |s| s.is_empty())
-    {
+    let sanitized_name = sanitize_filename::sanitize(
+        image_path.file_stem().unwrap().to_str().unwrap(),
+    );
+
+    if image_path.exists() {
+        // Copy the image file
+        let image_extension = image_path.extension().unwrap_or_default();
+        let image_output_path = images_dir.join(&sanitized_name).with_extension(image_extension);
+        copy(&image_path, &image_output_path)?;
+    } else if let Some(annotation) = annotation {
+        // Handle missing image file by extracting image_data from JSON
+        if let Some(image_data) = &annotation.image_data {
+            if !image_data.is_empty() {
+                // Decode and save the image data from JSON
+                let image_bytes = base64::decode(image_data)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+                let image_extension = infer_image_format(&image_bytes).unwrap_or("png");
+                let image_output_path = images_dir.join(&sanitized_name).with_extension(image_extension);
+                let mut file = File::create(&image_output_path)?;
+                file.write_all(&image_bytes)?;
+            } else {
+                // No image data available
+                warn!("No image data found in JSON for: {:?}", image_path);
+                return Ok(());
+            }
+        } else {
+            // No image data available
+            warn!("No image data found in JSON for: {:?}", image_path);
+            return Ok(());
+        }
+    } else {
+        // No image file or annotation available
         warn!(
-            "Skipping annotation with non-existent image_path and empty image_data: {:?}",
-            path
+            "Image file not found and no annotation provided for: {:?}",
+            image_path
         );
         return Ok(());
     }
 
-    let yolo_data = convert_to_yolo_format(annotation, args, label_map);
+    // Generate label file
+    let label_output_path = labels_dir.join(&sanitized_name).with_extension("txt");
+    let mut writer = BufWriter::new(File::create(&label_output_path)?);
 
-    let sanitized_name = sanitize_filename::sanitize(path.file_name().unwrap().to_str().unwrap());
-    let output_path = labels_dir.join(&sanitized_name).with_extension("txt");
-
-    let file = File::create(&output_path)?;
-    let mut writer = BufWriter::new(file);
-    writer.write_all(yolo_data.as_bytes())?;
-
-    if image_path.exists() {
-        let image_output_path = images_dir
-            .join(sanitized_name)
-            .with_extension(image_path.extension().unwrap_or_default());
-        copy(&image_path, &image_output_path)?;
-    } else if let Some(image_data) = &annotation.image_data {
-        if !image_data.is_empty() {
-            let image_data = base64::decode(image_data).expect("Failed to decode image data");
-            let extension = match image_path.extension().and_then(|ext| ext.to_str()) {
-                Some(ext) => match ext.to_lowercase().as_str() {
-                    "jpg" | "jpeg" => "jpeg",
-                    _ => "png",
-                },
-                None => "png",
-            };
-            let image_output_path = images_dir.join(sanitized_name).with_extension(extension);
-            let file = File::create(&image_output_path)?;
-            let mut writer = BufWriter::new(file);
-            writer.write_all(&image_data)?;
-        }
-    } else {
-        warn!(
-            "Image file not found and image data is empty: {:?}",
-            image_path
-        );
+    if let Some(annotation) = annotation {
+        // Convert annotation to YOLO format
+        let yolo_data = convert_to_yolo_format(annotation, args, label_map);
+        writer.write_all(yolo_data.as_bytes())?;
+    } else if args.include_background {
+        // Background image, generate empty label file
+        writer.write_all(b"")?;
     }
 
     Ok(())
@@ -440,7 +514,8 @@ fn convert_to_yolo_format(
                 yolo_data.push('\n');
             }
             Format::Bbox => {
-                let (x_center, y_center, width, height) = calculate_bounding_box(annotation, shape);
+                let (x_center, y_center, width, height) =
+                    calculate_bounding_box(annotation, shape);
                 yolo_data.push_str(&format!(
                     "{} {:.6} {:.6} {:.6} {:.6}\n",
                     class_id, x_center, y_center, width, height
