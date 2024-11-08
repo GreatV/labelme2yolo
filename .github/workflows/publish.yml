@@ -50,6 +50,10 @@ jobs:
         with:
           name: wheels-linux-${{ matrix.platform.target }}
           path: dist
+      - name: Run tests
+        run: cargo test
+      - name: Lint code
+        run: cargo clippy -- -D warnings
 
   musllinux:
     runs-on: ${{ matrix.platform.runner }}
@@ -78,6 +82,10 @@ jobs:
         with:
           name: wheels-musllinux-${{ matrix.platform.target }}
           path: dist
+      - name: Run tests
+        run: cargo test
+      - name: Lint code
+        run: cargo clippy -- -D warnings
 
   windows:
     runs-on: ${{ matrix.platform.runner }}
@@ -101,6 +109,10 @@ jobs:
         with:
           name: wheels-windows-${{ matrix.platform.target }}
           path: dist
+      - name: Run tests
+        run: cargo test
+      - name: Lint code
+        run: cargo clippy -- -D warnings
 
   macos:
     runs-on: ${{ matrix.platform.runner }}
@@ -124,6 +136,10 @@ jobs:
         with:
           name: wheels-macos-${{ matrix.platform.target }}
           path: dist
+      - name: Run tests
+        run: cargo test
+      - name: Lint code
+        run: cargo clippy -- -D warnings
 
   sdist:
     runs-on: ubuntu-latest
@@ -139,6 +155,10 @@ jobs:
         with:
           name: wheels-sdist
           path: dist
+      - name: Run tests
+        run: cargo test
+      - name: Lint code
+        run: cargo clippy -- -D warnings
 
   release:
     name: Release
