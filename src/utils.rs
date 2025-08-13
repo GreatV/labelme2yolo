@@ -227,9 +227,23 @@ impl SimpleSemaphore {
     /// Acquire a permit, blocking until one is available
     pub fn acquire(&self) {
         let (lock, cvar) = &*self.permits;
-        let mut count = lock.lock().unwrap();
+        let mut count = match lock.lock() {
+            Ok(g) => g,
+            Err(poisoned) => {
+                log::warn!("SimpleSemaphore lock poisoned in acquire; continuing with inner value");
+                poisoned.into_inner()
+            }
+        };
         while *count == 0 {
-            count = cvar.wait(count).unwrap();
+            count = match cvar.wait(count) {
+                Ok(g) => g,
+                Err(poisoned) => {
+                    log::warn!(
+                        "SimpleSemaphore lock poisoned after wait; continuing with inner value"
+                    );
+                    poisoned.into_inner()
+                }
+            };
         }
         *count -= 1;
     }
@@ -237,7 +251,13 @@ impl SimpleSemaphore {
     /// Release a permit back to the semaphore
     pub fn release(&self) {
         let (lock, cvar) = &*self.permits;
-        let mut count = lock.lock().unwrap();
+        let mut count = match lock.lock() {
+            Ok(g) => g,
+            Err(poisoned) => {
+                log::warn!("SimpleSemaphore lock poisoned in release; continuing with inner value");
+                poisoned.into_inner()
+            }
+        };
         *count += 1;
         // Ensure we don't exceed the maximum permits
         if *count > self.max_permits {

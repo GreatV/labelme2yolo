@@ -346,9 +346,87 @@ fn process_json_files_for_coco(params: ProcessJsonFilesParams) -> ProcessJsonFil
     pb.finish();
 
     // Extract the data from the mutexes
-    let train_final = Arc::try_unwrap(train_data).unwrap().into_inner().unwrap();
-    let val_final = Arc::try_unwrap(val_data).unwrap().into_inner().unwrap();
-    let test_final = Arc::try_unwrap(test_data).unwrap().into_inner().unwrap();
+    let train_final = match Arc::try_unwrap(train_data) {
+        Ok(mutex) => match mutex.into_inner() {
+            Ok(inner) => inner,
+            Err(poisoned) => {
+                warn!("train_data mutex poisoned at finalize; using inner value");
+                poisoned.into_inner()
+            }
+        },
+        Err(arc) => match arc.lock() {
+            Ok(mut guard) => {
+                use std::mem::take;
+                CocoSplitData {
+                    images: take(&mut guard.images),
+                    annotations: take(&mut guard.annotations),
+                }
+            }
+            Err(poisoned) => {
+                warn!("train_data mutex poisoned and Arc not unique; using inner");
+                let mut guard = poisoned.into_inner();
+                use std::mem::take;
+                CocoSplitData {
+                    images: take(&mut guard.images),
+                    annotations: take(&mut guard.annotations),
+                }
+            }
+        },
+    };
+    let val_final = match Arc::try_unwrap(val_data) {
+        Ok(mutex) => match mutex.into_inner() {
+            Ok(inner) => inner,
+            Err(poisoned) => {
+                warn!("val_data mutex poisoned at finalize; using inner value");
+                poisoned.into_inner()
+            }
+        },
+        Err(arc) => match arc.lock() {
+            Ok(mut guard) => {
+                use std::mem::take;
+                CocoSplitData {
+                    images: take(&mut guard.images),
+                    annotations: take(&mut guard.annotations),
+                }
+            }
+            Err(poisoned) => {
+                warn!("val_data mutex poisoned and Arc not unique; using inner");
+                let mut guard = poisoned.into_inner();
+                use std::mem::take;
+                CocoSplitData {
+                    images: take(&mut guard.images),
+                    annotations: take(&mut guard.annotations),
+                }
+            }
+        },
+    };
+    let test_final = match Arc::try_unwrap(test_data) {
+        Ok(mutex) => match mutex.into_inner() {
+            Ok(inner) => inner,
+            Err(poisoned) => {
+                warn!("test_data mutex poisoned at finalize; using inner value");
+                poisoned.into_inner()
+            }
+        },
+        Err(arc) => match arc.lock() {
+            Ok(mut guard) => {
+                use std::mem::take;
+                CocoSplitData {
+                    images: take(&mut guard.images),
+                    annotations: take(&mut guard.annotations),
+                }
+            }
+            Err(poisoned) => {
+                warn!("test_data mutex poisoned and Arc not unique; using inner");
+                let mut guard = poisoned.into_inner();
+                use std::mem::take;
+                CocoSplitData {
+                    images: take(&mut guard.images),
+                    annotations: take(&mut guard.annotations),
+                }
+            }
+        },
+    };
 
     // Convert the DashSet to a regular HashSet
     Ok((
@@ -830,18 +908,69 @@ fn process_background_images_for_coco(
     pb.finish();
 
     // Extract the data from the mutexes
-    let train_final = Arc::try_unwrap(train_bg_images)
-        .unwrap()
-        .into_inner()
-        .unwrap();
-    let val_final = Arc::try_unwrap(val_bg_images)
-        .unwrap()
-        .into_inner()
-        .unwrap();
-    let test_final = Arc::try_unwrap(test_bg_images)
-        .unwrap()
-        .into_inner()
-        .unwrap();
+    let train_final = match Arc::try_unwrap(train_bg_images) {
+        Ok(mutex) => match mutex.into_inner() {
+            Ok(inner) => inner,
+            Err(poisoned) => {
+                warn!("train_bg_images mutex poisoned at finalize; using inner value");
+                poisoned.into_inner()
+            }
+        },
+        Err(arc) => match arc.lock() {
+            Ok(mut guard) => {
+                use std::mem::take;
+                take(&mut *guard)
+            }
+            Err(poisoned) => {
+                warn!("train_bg_images mutex poisoned and Arc not unique; using inner");
+                let mut guard = poisoned.into_inner();
+                use std::mem::take;
+                take(&mut *guard)
+            }
+        },
+    };
+    let val_final = match Arc::try_unwrap(val_bg_images) {
+        Ok(mutex) => match mutex.into_inner() {
+            Ok(inner) => inner,
+            Err(poisoned) => {
+                warn!("val_bg_images mutex poisoned at finalize; using inner value");
+                poisoned.into_inner()
+            }
+        },
+        Err(arc) => match arc.lock() {
+            Ok(mut guard) => {
+                use std::mem::take;
+                take(&mut *guard)
+            }
+            Err(poisoned) => {
+                warn!("val_bg_images mutex poisoned and Arc not unique; using inner");
+                let mut guard = poisoned.into_inner();
+                use std::mem::take;
+                take(&mut *guard)
+            }
+        },
+    };
+    let test_final = match Arc::try_unwrap(test_bg_images) {
+        Ok(mutex) => match mutex.into_inner() {
+            Ok(inner) => inner,
+            Err(poisoned) => {
+                warn!("test_bg_images mutex poisoned at finalize; using inner value");
+                poisoned.into_inner()
+            }
+        },
+        Err(arc) => match arc.lock() {
+            Ok(mut guard) => {
+                use std::mem::take;
+                take(&mut *guard)
+            }
+            Err(poisoned) => {
+                warn!("test_bg_images mutex poisoned and Arc not unique; using inner");
+                let mut guard = poisoned.into_inner();
+                use std::mem::take;
+                take(&mut *guard)
+            }
+        },
+    };
 
     Ok((train_final, val_final, test_final))
 }

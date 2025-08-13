@@ -175,6 +175,18 @@ pub fn process_json_files_streaming(
                     }
                 };
 
+                let mut stats_guard_opt = match stats.lock() {
+                    Ok(guard) => Some(guard),
+                    Err(e) => {
+                        log::warn!(
+                            "ProcessingStats lock poisoned while processing {}: {}",
+                            json_path.display(),
+                            e
+                        );
+                        None
+                    }
+                };
+                let stats_ref_opt = stats_guard_opt.as_deref_mut();
                 let processor = crate::conversion::AnnotationProcessor {
                     image_path: &image_path,
                     annotation: Some(&annotation),
@@ -185,7 +197,7 @@ pub fn process_json_files_streaming(
                     args,
                     filename_cache: &filename_cache,
                     base_dir: dirname,
-                    stats: Some(&mut stats.lock().unwrap()),
+                    stats: stats_ref_opt,
                 };
                 if let Err(e) = crate::conversion::process_annotation(processor) {
                     log::error!(
@@ -289,6 +301,18 @@ pub fn process_json_files_streaming(
                     }
                 };
 
+                let mut stats_guard_opt = match stats.lock() {
+                    Ok(guard) => Some(guard),
+                    Err(e) => {
+                        log::warn!(
+                            "ProcessingStats lock poisoned while processing {}: {}",
+                            json_path.display(),
+                            e
+                        );
+                        None
+                    }
+                };
+                let stats_ref_opt = stats_guard_opt.as_deref_mut();
                 let processor = crate::conversion::AnnotationProcessor {
                     image_path: &image_path,
                     annotation: None,
@@ -299,7 +323,7 @@ pub fn process_json_files_streaming(
                     args,
                     filename_cache: &filename_cache,
                     base_dir: dirname,
-                    stats: Some(&mut stats.lock().unwrap()),
+                    stats: stats_ref_opt,
                 };
                 if let Err(e) = crate::conversion::process_annotation(processor) {
                     log::error!(
@@ -402,6 +426,18 @@ pub fn process_json_files_streaming(
                     }
                 };
 
+                let mut stats_guard_opt = match stats.lock() {
+                    Ok(guard) => Some(guard),
+                    Err(e) => {
+                        log::warn!(
+                            "ProcessingStats lock poisoned while processing {}: {}",
+                            json_path.display(),
+                            e
+                        );
+                        None
+                    }
+                };
+                let stats_ref_opt = stats_guard_opt.as_deref_mut();
                 let processor = crate::conversion::AnnotationProcessor {
                     image_path: &image_path,
                     annotation: Some(&annotation),
@@ -412,7 +448,7 @@ pub fn process_json_files_streaming(
                     args,
                     filename_cache: &filename_cache,
                     base_dir: dirname,
-                    stats: Some(&mut stats.lock().unwrap()),
+                    stats: stats_ref_opt,
                 };
                 if let Err(e) = crate::conversion::process_annotation(processor) {
                     log::error!(
@@ -466,8 +502,22 @@ pub fn process_json_files_streaming(
     // Convert the DashSet to a regular HashSet and extract statistics
     let processed_image_basenames = processed_image_basenames.into_iter().collect();
     let final_stats = match Arc::try_unwrap(stats) {
-        Ok(mutex) => mutex.into_inner().unwrap(),
-        Err(arc) => arc.lock().unwrap().clone(),
+        Ok(mutex) => match mutex.into_inner() {
+            Ok(inner) => inner,
+            Err(poisoned) => {
+                log::warn!("ProcessingStats mutex poisoned at finalize; using inner value");
+                poisoned.into_inner()
+            }
+        },
+        Err(arc) => match arc.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => {
+                log::warn!(
+                    "ProcessingStats mutex poisoned at finalize (shared Arc); cloning inner"
+                );
+                poisoned.into_inner().clone()
+            }
+        },
     };
     (processed_image_basenames, final_stats)
 }
