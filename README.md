@@ -1,7 +1,7 @@
 # Labelme2YOLO
 
 [![PyPI - Version](https://img.shields.io/pypi/v/labelme2yolo.svg)](https://pypi.org/project/labelme2yolo)
-![PyPI - Downloads](https://img.shields.io/pypi/dm/labelme2yolo?style=flat)
+[![PyPI Downloads](https://static.pepy.tech/badge/labelme2yolo/month)](https://pepy.tech/projects/labelme2yolo)
 [![PYPI - Downloads](https://static.pepy.tech/badge/labelme2yolo)](https://pepy.tech/project/labelme2yolo)
 
 Labelme2YOLO efficiently converts LabelMe's JSON format to the YOLOv5 dataset format. It also supports YOLOv5/YOLOv8 segmentation datasets, making it simple to convert existing LabelMe segmentation datasets to YOLO format.

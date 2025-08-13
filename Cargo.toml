@@ -1,13 +1,20 @@
 [package]
 name = "labelme2yolo"
-version = "0.2.7"
+version = "0.3.0"
 edition = "2021"
+
+[[bin]]
+name = "labelme2yolo"
+path = "src/labelme2yolo.rs"
+
+[[bin]]
+name = "labelme2coco"
+path = "src/labelme2coco.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 clap = { version = "4.5.11", features = ["derive"] }
-glob = "0.3.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rand = "0.8"
@@ -18,3 +25,8 @@ dashmap = "5.5"
 base64 = "0.13"
 log = "0.4"
 env_logger = "0.9"
+jwalk = "0.8"
+num_cpus = "1.13"
+chrono = { version = "0.4", features = ["serde"] }
+tempfile = "3.5"
+image = "0.24"
