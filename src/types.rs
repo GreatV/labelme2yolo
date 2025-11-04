@@ -21,7 +21,7 @@ pub fn get_image_extensions_set() -> &'static HashSet<String> {
 pub struct Shape {
     pub label: String,
     pub points: Vec<(f64, f64)>,
-    pub group_id: Option<String>,
+    pub group_id: Option<i64>,
     pub shape_type: String,
     pub description: Option<String>,
     pub mask: Option<String>,
