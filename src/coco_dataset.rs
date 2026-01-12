@@ -104,7 +104,11 @@ pub fn setup_coco_output_directories(
     args: &Args,
     dirname: &Path,
 ) -> std::io::Result<CocoOutputDirs> {
-    let base_dir = dirname.join("COCODataset");
+    let base_dir = if let Some(ref output_dir) = args.output_dir {
+        PathBuf::from(output_dir)
+    } else {
+        dirname.join("COCODataset")
+    };
     let annotations_dir = create_output_directory(&base_dir.join("annotations"))?;
     let images_dir = create_output_directory(&base_dir.join("images"))?;
 
@@ -336,7 +340,7 @@ fn process_json_files_for_coco(params: ProcessJsonFilesParams) -> ProcessJsonFil
             let count = processed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
             let update_counter =
                 message_update_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-            if update_counter % MESSAGE_UPDATE_INTERVAL == 0 {
+            if update_counter.is_multiple_of(MESSAGE_UPDATE_INTERVAL) {
                 pb.set_message(format!("Processed {} files...", count));
             }
         });
@@ -523,7 +527,7 @@ fn process_annotation_for_coco(params: ProcessAnnotationParams) {
         annotation.image_height,
     );
 
-    // Process shapes
+    // Process shapes - filter to only those in label_map
     let mut annotations = Vec::new();
     for shape in &annotation.shapes {
         if let Some(class_id) = label_map.get(&shape.label) {

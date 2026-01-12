@@ -10,6 +10,10 @@ pub struct Args {
     #[arg(short = 'd', long = "json_dir")]
     pub json_dir: String,
 
+    /// Output directory for converted dataset (default: <json_dir>/YOLODataset or <json_dir>/COCODataset)
+    #[arg(short = 'o', long = "output_dir")]
+    pub output_dir: Option<String>,
+
     /// Proportion of the dataset to use for validation
     #[arg(long = "val_size", default_value_t = 0.2, value_parser = validate_size)]
     pub val_size: f32,

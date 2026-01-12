@@ -3,7 +3,7 @@ use jwalk::WalkDir;
 use rayon::prelude::*;
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::config::Args;
@@ -15,8 +15,13 @@ use crate::utils::{
 
 /// Set up the directory structure for YOLO dataset output
 pub fn setup_output_directories(args: &Args, dirname: &Path) -> std::io::Result<OutputDirs> {
-    let labels_dir = create_output_directory(&dirname.join("YOLODataset/labels"))?;
-    let images_dir = create_output_directory(&dirname.join("YOLODataset/images"))?;
+    let base_dir = if let Some(ref output_dir) = args.output_dir {
+        PathBuf::from(output_dir)
+    } else {
+        dirname.join("YOLODataset")
+    };
+    let labels_dir = create_output_directory(&base_dir.join("labels"))?;
+    let images_dir = create_output_directory(&base_dir.join("images"))?;
 
     let train_labels_dir = create_output_directory(&labels_dir.join("train"))?;
     let val_labels_dir = create_output_directory(&labels_dir.join("val"))?;
@@ -238,7 +243,7 @@ pub fn process_json_files_streaming(
                 let count = processed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                 let update_counter =
                     message_update_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                if update_counter % MESSAGE_UPDATE_INTERVAL == 0 {
+                if update_counter.is_multiple_of(MESSAGE_UPDATE_INTERVAL) {
                     pb.set_message(format!("Processed {} files...", count));
                 }
             } else if let Some(mut streaming_annotation) =
@@ -364,7 +369,7 @@ pub fn process_json_files_streaming(
                 let count = processed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                 let update_counter =
                     message_update_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                if update_counter % MESSAGE_UPDATE_INTERVAL == 0 {
+                if update_counter.is_multiple_of(MESSAGE_UPDATE_INTERVAL) {
                     pb.set_message(format!("Processed {} files...", count));
                 }
             } else if let Some(annotation) = read_and_parse_json(&json_path, args.buffer_size_kib) {
@@ -489,7 +494,7 @@ pub fn process_json_files_streaming(
                 let count = processed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                 let update_counter =
                     message_update_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                if update_counter % MESSAGE_UPDATE_INTERVAL == 0 {
+                if update_counter.is_multiple_of(MESSAGE_UPDATE_INTERVAL) {
                     pb.set_message(format!("Processed {} files...", count));
                 }
             }
@@ -680,7 +685,7 @@ pub fn process_background_images(
                     let update_counter = bg_message_update_count
                         .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
                         + 1;
-                    if update_counter % BG_MESSAGE_UPDATE_INTERVAL == 0 {
+                    if update_counter.is_multiple_of(BG_MESSAGE_UPDATE_INTERVAL) {
                         pb.set_message(format!("Processed {} background images...", count));
                     }
                 }
@@ -697,9 +702,14 @@ pub fn create_dataset_yaml(
     args: &Args,
     label_map: &dashmap::DashMap<String, usize>,
 ) -> std::io::Result<()> {
-    let dataset_yaml_path = dirname.join("YOLODataset/dataset.yaml");
+    let base_dir = if let Some(ref output_dir) = args.output_dir {
+        PathBuf::from(output_dir)
+    } else {
+        dirname.join("YOLODataset")
+    };
+    let dataset_yaml_path = base_dir.join("dataset.yaml");
     let mut dataset_yaml = BufWriter::new(File::create(&dataset_yaml_path)?);
-    let absolute_path = fs::canonicalize(dirname.join("YOLODataset"))?;
+    let absolute_path = fs::canonicalize(&base_dir)?;
     let mut yaml_content = format!(
         "path: {}\ntrain: images/train\nval: images/val\n",
         absolute_path.to_string_lossy()

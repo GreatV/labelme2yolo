@@ -226,7 +226,7 @@ impl CocoWriter {
 
 /// Calculate polygon area using the shoelace formula
 pub fn calculate_polygon_area(polygon: &[f64]) -> f64 {
-    if polygon.len() < 6 || polygon.len() % 2 != 0 {
+    if polygon.len() < 6 || !polygon.len().is_multiple_of(2) {
         return 0.0;
     }
 
@@ -247,7 +247,7 @@ pub fn calculate_polygon_area(polygon: &[f64]) -> f64 {
 
 /// Calculate bounding box from polygon points
 pub fn calculate_bbox_from_polygon(polygon: &[f64]) -> [f64; 4] {
-    if polygon.len() < 6 || polygon.len() % 2 != 0 {
+    if polygon.len() < 6 || !polygon.len().is_multiple_of(2) {
         return [0.0, 0.0, 0.0, 0.0];
     }
 
