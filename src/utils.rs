@@ -5,10 +5,20 @@ use rayon;
 use serde_json;
 use std::fs;
 use std::io::{BufReader, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
 
+use crate::config::Args;
 use crate::types::{ImageAnnotation, StreamingImageAnnotation};
+
+/// Get the base output directory based on args.output_dir or a default subdirectory
+pub fn get_base_output_dir(args: &Args, json_dir_path: &Path, default_subdir: &str) -> PathBuf {
+    if let Some(ref output_dir) = args.output_dir {
+        PathBuf::from(output_dir)
+    } else {
+        json_dir_path.join(default_subdir)
+    }
+}
 
 /// Helper function to infer image format from image bytes
 pub fn infer_image_format(image_bytes: &[u8]) -> Option<&'static str> {

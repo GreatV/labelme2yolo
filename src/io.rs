@@ -3,23 +3,19 @@ use jwalk::WalkDir;
 use rayon::prelude::*;
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::config::Args;
 use crate::types::{OutputDirs, SplitData};
 use crate::utils::{
-    create_io_thread_pool, create_output_directory, read_and_parse_json,
+    create_io_thread_pool, create_output_directory, get_base_output_dir, read_and_parse_json,
     read_and_parse_json_buffered, read_and_parse_json_streaming,
 };
 
 /// Set up the directory structure for YOLO dataset output
 pub fn setup_output_directories(args: &Args, dirname: &Path) -> std::io::Result<OutputDirs> {
-    let base_dir = if let Some(ref output_dir) = args.output_dir {
-        PathBuf::from(output_dir)
-    } else {
-        dirname.join("YOLODataset")
-    };
+    let base_dir = get_base_output_dir(args, dirname, "YOLODataset");
     let labels_dir = create_output_directory(&base_dir.join("labels"))?;
     let images_dir = create_output_directory(&base_dir.join("images"))?;
 
@@ -63,20 +59,28 @@ pub fn process_json_files_streaming(
     // Create a custom thread pool with limited concurrency
     let thread_pool = create_io_thread_pool(args.workers);
 
+    // Compute the output directory to exclude from scanning
+    let output_base_dir = get_base_output_dir(args, dirname, "YOLODataset");
+
     // Walk through the directory structure to find JSON files using parallel jwalk
     let json_entries = WalkDir::new(dirname)
         .skip_hidden(false)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
-            // Skip YOLODataset directories early by comparing directory names directly
+            // Skip output directories early by comparing directory paths
             if e.file_type().is_dir() {
-                if let Some(name) = e.file_name().to_str() {
-                    name != "YOLODataset"
-                } else {
-                    // If we can't convert to str, skip to be safe
-                    false
+                let entry_path = e.path();
+                // Skip if this directory is the output directory or inside it
+                if entry_path.starts_with(&output_base_dir) {
+                    return false;
                 }
+                // Also skip legacy "YOLODataset" directories for backward compatibility
+                if let Some(name) = e.file_name().to_str() {
+                    return name != "YOLODataset";
+                }
+                // If we can't convert to str, skip to be safe
+                false
             } else {
                 true
             }
@@ -547,20 +551,28 @@ pub fn process_background_images(
     // Use the precomputed set of supported image extensions for fast lookup
     let image_extensions = crate::types::get_image_extensions_set();
 
+    // Compute the output directory to exclude from scanning
+    let output_base_dir = get_base_output_dir(args, dirname, "YOLODataset");
+
     // Walk through the directory structure to find image files using parallel jwalk
     let image_entries = WalkDir::new(dirname)
         .skip_hidden(false)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
-            // Skip YOLODataset directories early by comparing directory names directly
+            // Skip output directories early by comparing directory paths
             if e.file_type().is_dir() {
-                if let Some(name) = e.file_name().to_str() {
-                    name != "YOLODataset"
-                } else {
-                    // If we can't convert to str, skip to be safe
-                    false
+                let entry_path = e.path();
+                // Skip if this directory is the output directory or inside it
+                if entry_path.starts_with(&output_base_dir) {
+                    return false;
                 }
+                // Also skip legacy "YOLODataset" directories for backward compatibility
+                if let Some(name) = e.file_name().to_str() {
+                    return name != "YOLODataset";
+                }
+                // If we can't convert to str, skip to be safe
+                false
             } else {
                 true
             }
@@ -702,11 +714,7 @@ pub fn create_dataset_yaml(
     args: &Args,
     label_map: &dashmap::DashMap<String, usize>,
 ) -> std::io::Result<()> {
-    let base_dir = if let Some(ref output_dir) = args.output_dir {
-        PathBuf::from(output_dir)
-    } else {
-        dirname.join("YOLODataset")
-    };
+    let base_dir = get_base_output_dir(args, dirname, "YOLODataset");
     let dataset_yaml_path = base_dir.join("dataset.yaml");
     let mut dataset_yaml = BufWriter::new(File::create(&dataset_yaml_path)?);
     let absolute_path = fs::canonicalize(&base_dir)?;
