@@ -303,7 +303,9 @@ mod tests {
     #[test]
     fn collision_resistant_name_has_no_dots_in_stem() {
         let name = generate_collision_resistant_name("this_photo_jpg.rf.123a", Path::new("a/b"));
-        let (stem_part, hash_part) = name.rsplit_once('_').expect("Expected name to contain an underscore-separated hash");
+        let (stem_part, hash_part) = name
+            .rsplit_once('_')
+            .expect("Expected name to contain an underscore-separated hash");
 
         // Check that dots in the original stem were replaced by underscores
         assert_eq!(stem_part, "this_photo_jpg_rf_123a");
