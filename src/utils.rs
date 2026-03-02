@@ -202,8 +202,9 @@ pub fn create_io_thread_pool(workers: usize) -> rayon::ThreadPool {
 /// Generate a collision-resistant filename by combining the sanitized file stem
 /// with a short hash of the relative path
 pub fn generate_collision_resistant_name(file_stem: &str, relative_path: &Path) -> String {
-    // Sanitize the file stem
-    let sanitized_stem = sanitize_filename::sanitize(file_stem);
+    // Sanitize the file stem and normalize dots so with_extension() never truncates unique suffixes.
+    // Example: "foo.bar_abcd".with_extension("jpg") -> "foo.jpg", so we avoid dots in generated stems.
+    let sanitized_stem = sanitize_filename::sanitize(file_stem).replace('.', "_");
 
     // Generate a short hash of the relative path
     use std::collections::hash_map::DefaultHasher;
@@ -291,5 +292,33 @@ pub struct SemaphoreGuard<'a> {
 impl<'a> Drop for SemaphoreGuard<'a> {
     fn drop(&mut self) {
         self.semaphore.release();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::generate_collision_resistant_name;
+    use std::path::Path;
+
+    #[test]
+    fn collision_resistant_name_has_no_dots_in_stem() {
+        let name = generate_collision_resistant_name("this_photo_jpg.rf.123a", Path::new("a/b"));
+        let (stem_part, hash_part) = name
+            .rsplit_once('_')
+            .expect("Expected name to contain an underscore-separated hash");
+
+        // Check that dots in the original stem were replaced by underscores
+        assert_eq!(stem_part, "this_photo_jpg_rf_123a");
+
+        // Check that the hash part has the correct format
+        assert_eq!(hash_part.len(), 8);
+        assert!(hash_part.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn collision_resistant_name_differs_for_same_stem_in_different_paths() {
+        let a = generate_collision_resistant_name("same.name", Path::new("dir_a/file.jpg"));
+        let b = generate_collision_resistant_name("same.name", Path::new("dir_b/file.jpg"));
+        assert_ne!(a, b);
     }
 }
