@@ -16,7 +16,7 @@ pub mod yolo_dataset;
 // Re-export commonly used types and functions
 pub use config::{Args, Format};
 pub use io::{process_background_images, process_json_files_streaming, setup_output_directories};
-pub use types::{ImageAnnotation, OutputDirs, Shape, SplitData};
+pub use types::{ImageAnnotation, OutputDirs, Shape, SourceRoot, SplitData};
 pub use yolo_dataset::process_dataset;
 
 // COCO-specific exports

@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::config::Args;
-use crate::types::{OutputDirs, SplitData};
+use crate::types::{OutputDirs, SourceRoot, SplitData};
 use crate::utils::{
     create_io_thread_pool, create_output_directory, get_base_output_dir, read_and_parse_json,
     read_and_parse_json_buffered, read_and_parse_json_streaming,
@@ -46,7 +46,7 @@ pub fn setup_output_directories(args: &Args, dirname: &Path) -> std::io::Result<
 /// Process JSON files in a streaming fashion to reduce memory footprint
 /// Returns a set of processed image basenames for background image detection and processing statistics
 pub fn process_json_files_streaming(
-    dirname: &Path,
+    source_roots: &[SourceRoot],
     args: &Args,
     output_dirs: &OutputDirs,
     label_map: &dashmap::DashMap<String, usize>,
@@ -59,37 +59,45 @@ pub fn process_json_files_streaming(
     // Create a custom thread pool with limited concurrency
     let thread_pool = create_io_thread_pool(args.workers);
 
-    // Compute the output directory to exclude from scanning
-    let output_base_dir = get_base_output_dir(args, dirname, "YOLODataset");
-
-    // Walk through the directory structure to find JSON files using parallel jwalk
-    let json_entries = WalkDir::new(dirname)
-        .skip_hidden(false)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            // Skip output directories early by comparing directory paths
-            if e.file_type().is_dir() {
-                let entry_path = e.path();
-                // Skip if this directory is the output directory or inside it
-                if entry_path.starts_with(&output_base_dir) {
-                    return false;
-                }
-                // Also skip legacy "YOLODataset" directories for backward compatibility
-                if let Some(name) = e.file_name().to_str() {
-                    return name != "YOLODataset";
-                }
-                // If we can't convert to str, skip to be safe
-                false
-            } else {
-                true
-            }
+    // Walk through each source directory to find JSON files using parallel jwalk.
+    // The walkers must be created eagerly (collect) on the current thread: jwalk
+    // schedules its traversal with rayon::spawn, and creating a walker from inside
+    // the saturated worker pool below would starve that spawn and make jwalk
+    // silently return no entries after its startup timeout.
+    let json_walkers: Vec<_> = source_roots
+        .iter()
+        .map(|root| {
+            // Compute the output directory to exclude from scanning
+            let output_base_dir = get_base_output_dir(args, &root.path, "YOLODataset");
+            WalkDir::new(&root.path)
+                .skip_hidden(false)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter(move |e| {
+                    // Skip output directories early by comparing directory paths
+                    if e.file_type().is_dir() {
+                        let entry_path = e.path();
+                        // Skip if this directory is the output directory or inside it
+                        if entry_path.starts_with(&output_base_dir) {
+                            return false;
+                        }
+                        // Also skip legacy "YOLODataset" directories for backward compatibility
+                        if let Some(name) = e.file_name().to_str() {
+                            return name != "YOLODataset";
+                        }
+                        // If we can't convert to str, skip to be safe
+                        false
+                    } else {
+                        true
+                    }
+                })
+                .filter(|e| {
+                    e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "json")
+                })
+                .map(move |e| (root, e.path().to_path_buf()))
         })
-        .filter(|e| {
-            e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "json")
-        })
-        .map(|e| e.path().to_path_buf())
-        .par_bridge();
+        .collect();
+    let json_entries = json_walkers.into_iter().flatten().par_bridge();
 
     // Create a counter for tracking processed files
     let processed_count = std::sync::atomic::AtomicUsize::new(0);
@@ -118,7 +126,7 @@ pub fn process_json_files_streaming(
 
     // Process JSON files in parallel using the custom thread pool
     thread_pool.install(|| {
-        json_entries.for_each(|json_path| {
+        json_entries.for_each(|(root, json_path)| {
             // Increment total files processed counter
             if let Ok(mut stats) = stats.lock() {
                 stats.increment_total();
@@ -131,7 +139,7 @@ pub fn process_json_files_streaming(
                 let image_path = json_path
                     .parent()
                     .map(|parent| parent.join(&annotation.image_path))
-                    .unwrap_or_else(|| dirname.join(&annotation.image_path));
+                    .unwrap_or_else(|| root.path.join(&annotation.image_path));
 
                 // Add labels to the label map if not using a predefined list and not in deterministic mode
                 if args.label_list.is_empty() && !args.deterministic_labels {
@@ -205,7 +213,7 @@ pub fn process_json_files_streaming(
                     label_map,
                     args,
                     filename_cache: &filename_cache,
-                    base_dir: dirname,
+                    source_root: root,
                     stats: stats_ref_opt,
                 };
                 if let Err(e) = crate::conversion::process_annotation(processor) {
@@ -217,10 +225,8 @@ pub fn process_json_files_streaming(
                 }
 
                 // Track processed image basenames for background image detection
-                // Use the relative path as the cache key
-                let relative_path = image_path
-                    .strip_prefix(dirname)
-                    .unwrap_or(image_path.as_path());
+                // Use the root-qualified relative path as the cache key
+                let relative_path = root.key_path(&image_path);
                 let cache_key = relative_path.to_string_lossy().to_string();
 
                 // Use the sanitized name for collision-free tracking
@@ -232,7 +238,7 @@ pub fn process_json_files_streaming(
                         let collision_resistant_name =
                             crate::utils::generate_collision_resistant_name(
                                 file_stem,
-                                relative_path,
+                                &relative_path,
                             );
                         filename_cache.insert(cache_key, collision_resistant_name.clone());
                         collision_resistant_name
@@ -257,7 +263,7 @@ pub fn process_json_files_streaming(
                 let image_path = json_path
                     .parent()
                     .map(|parent| parent.join(&streaming_annotation.image_path))
-                    .unwrap_or_else(|| dirname.join(&streaming_annotation.image_path));
+                    .unwrap_or_else(|| root.path.join(&streaming_annotation.image_path));
 
                 // Add labels to the label map if not using a predefined list and not in deterministic mode
                 if args.label_list.is_empty() && !args.deterministic_labels {
@@ -331,7 +337,7 @@ pub fn process_json_files_streaming(
                     label_map,
                     args,
                     filename_cache: &filename_cache,
-                    base_dir: dirname,
+                    source_root: root,
                     stats: stats_ref_opt,
                 };
                 if let Err(e) = crate::conversion::process_annotation(processor) {
@@ -343,10 +349,8 @@ pub fn process_json_files_streaming(
                 }
 
                 // Track processed image basenames for background image detection
-                // Use the relative path as the cache key
-                let relative_path = image_path
-                    .strip_prefix(dirname)
-                    .unwrap_or(image_path.as_path());
+                // Use the root-qualified relative path as the cache key
+                let relative_path = root.key_path(&image_path);
                 let cache_key = relative_path.to_string_lossy().to_string();
 
                 // Use the sanitized name for collision-free tracking
@@ -358,7 +362,7 @@ pub fn process_json_files_streaming(
                         let collision_resistant_name =
                             crate::utils::generate_collision_resistant_name(
                                 file_stem,
-                                relative_path,
+                                &relative_path,
                             );
                         filename_cache.insert(cache_key, collision_resistant_name.clone());
                         collision_resistant_name
@@ -382,7 +386,7 @@ pub fn process_json_files_streaming(
                 let image_path = json_path
                     .parent()
                     .map(|parent| parent.join(&annotation.image_path))
-                    .unwrap_or_else(|| dirname.join(&annotation.image_path));
+                    .unwrap_or_else(|| root.path.join(&annotation.image_path));
 
                 // Add labels to the label map if not using a predefined list and not in deterministic mode
                 if args.label_list.is_empty() && !args.deterministic_labels {
@@ -456,7 +460,7 @@ pub fn process_json_files_streaming(
                     label_map,
                     args,
                     filename_cache: &filename_cache,
-                    base_dir: dirname,
+                    source_root: root,
                     stats: stats_ref_opt,
                 };
                 if let Err(e) = crate::conversion::process_annotation(processor) {
@@ -468,10 +472,8 @@ pub fn process_json_files_streaming(
                 }
 
                 // Track processed image basenames for background image detection
-                // Use the relative path as the cache key
-                let relative_path = image_path
-                    .strip_prefix(dirname)
-                    .unwrap_or(image_path.as_path());
+                // Use the root-qualified relative path as the cache key
+                let relative_path = root.key_path(&image_path);
                 let cache_key = relative_path.to_string_lossy().to_string();
 
                 // Use the sanitized name for collision-free tracking
@@ -483,7 +485,7 @@ pub fn process_json_files_streaming(
                         let collision_resistant_name =
                             crate::utils::generate_collision_resistant_name(
                                 file_stem,
-                                relative_path,
+                                &relative_path,
                             );
                         filename_cache.insert(cache_key, collision_resistant_name.clone());
                         collision_resistant_name
@@ -534,7 +536,7 @@ pub fn process_json_files_streaming(
 /// Process background images in a second pass
 /// This function processes images that don't have corresponding JSON annotations
 pub fn process_background_images(
-    dirname: &Path,
+    source_roots: &[SourceRoot],
     args: &Args,
     output_dirs: &OutputDirs,
     label_map: &dashmap::DashMap<String, usize>,
@@ -551,44 +553,51 @@ pub fn process_background_images(
     // Use the precomputed set of supported image extensions for fast lookup
     let image_extensions = crate::types::get_image_extensions_set();
 
-    // Compute the output directory to exclude from scanning
-    let output_base_dir = get_base_output_dir(args, dirname, "YOLODataset");
-
-    // Walk through the directory structure to find image files using parallel jwalk
-    let image_entries = WalkDir::new(dirname)
-        .skip_hidden(false)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            // Skip output directories early by comparing directory paths
-            if e.file_type().is_dir() {
-                let entry_path = e.path();
-                // Skip if this directory is the output directory or inside it
-                if entry_path.starts_with(&output_base_dir) {
-                    return false;
-                }
-                // Also skip legacy "YOLODataset" directories for backward compatibility
-                if let Some(name) = e.file_name().to_str() {
-                    return name != "YOLODataset";
-                }
-                // If we can't convert to str, skip to be safe
-                false
-            } else {
-                true
-            }
+    // Walk through each source directory to find image files using parallel jwalk.
+    // Walkers are created eagerly for the same reason as in
+    // process_json_files_streaming: creating them inside the saturated worker
+    // pool would starve jwalk's rayon::spawn and silently drop entries.
+    let image_walkers: Vec<_> = source_roots
+        .iter()
+        .map(|root| {
+            // Compute the output directory to exclude from scanning
+            let output_base_dir = get_base_output_dir(args, &root.path, "YOLODataset");
+            WalkDir::new(&root.path)
+                .skip_hidden(false)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter(move |e| {
+                    // Skip output directories early by comparing directory paths
+                    if e.file_type().is_dir() {
+                        let entry_path = e.path();
+                        // Skip if this directory is the output directory or inside it
+                        if entry_path.starts_with(&output_base_dir) {
+                            return false;
+                        }
+                        // Also skip legacy "YOLODataset" directories for backward compatibility
+                        if let Some(name) = e.file_name().to_str() {
+                            return name != "YOLODataset";
+                        }
+                        // If we can't convert to str, skip to be safe
+                        false
+                    } else {
+                        true
+                    }
+                })
+                .filter(|e| e.file_type().is_file())
+                .filter_map(move |e| {
+                    let path = e.path();
+                    if let Some(extension) = path.extension() {
+                        let ext = extension.to_string_lossy().to_lowercase();
+                        if image_extensions.contains(&ext) {
+                            return Some((root, path.to_path_buf()));
+                        }
+                    }
+                    None
+                })
         })
-        .filter(|e| e.file_type().is_file())
-        .filter_map(|e| {
-            let path = e.path();
-            if let Some(extension) = path.extension() {
-                let ext = extension.to_string_lossy().to_lowercase();
-                if image_extensions.contains(&ext) {
-                    return Some(path.to_path_buf());
-                }
-            }
-            None
-        })
-        .par_bridge();
+        .collect();
+    let image_entries = image_walkers.into_iter().flatten().par_bridge();
 
     // Create a counter for tracking processed background images
     let bg_processed_count = std::sync::atomic::AtomicUsize::new(0);
@@ -613,12 +622,10 @@ pub fn process_background_images(
 
     // Process background images in parallel using the custom thread pool
     thread_pool.install(|| {
-        image_entries.for_each(|image_path| {
+        image_entries.for_each(|(root, image_path)| {
             // Check if this image was already processed (has a JSON annotation)
-            // Use the relative path as the cache key
-            let relative_path = image_path
-                .strip_prefix(dirname)
-                .unwrap_or(image_path.as_path());
+            // Use the root-qualified relative path as the cache key
+            let relative_path = root.key_path(&image_path);
             let cache_key = relative_path.to_string_lossy().to_string();
 
             // Use the sanitized name for collision-free tracking
@@ -628,7 +635,7 @@ pub fn process_background_images(
                 } else {
                     // Generate a collision-resistant name using the file stem and relative path
                     let collision_resistant_name =
-                        crate::utils::generate_collision_resistant_name(file_stem, relative_path);
+                        crate::utils::generate_collision_resistant_name(file_stem, &relative_path);
                     filename_cache.insert(cache_key, collision_resistant_name.clone());
                     collision_resistant_name
                 };
@@ -677,7 +684,7 @@ pub fn process_background_images(
                         label_map,
                         args,
                         filename_cache: &filename_cache,
-                        base_dir: dirname,
+                        source_root: root,
                         stats: None, // No stats tracking for background images
                     };
                     if let Err(e) = crate::conversion::process_annotation(processor) {

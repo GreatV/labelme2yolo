@@ -1,7 +1,6 @@
 use dashmap::{DashMap, DashSet};
 use log::info;
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::{
     atomic::{AtomicUsize, Ordering::Relaxed},
     Arc,
@@ -9,14 +8,18 @@ use std::sync::{
 
 use crate::config::Args;
 use crate::io::{create_dataset_yaml, process_background_images, process_json_files_streaming};
-use crate::types::{OutputDirs, SplitData};
+use crate::types::{OutputDirs, SourceRoot, SplitData};
 
 /// Main dataset processing pipeline using streaming approach to reduce memory footprint
 pub fn process_dataset(
     output_dirs: &OutputDirs,
     args: &Args,
-    dirname: &Path,
+    source_roots: &[SourceRoot],
 ) -> Result<(), Box<dyn std::error::Error>> {
+    if source_roots.is_empty() {
+        return Err("No source directories provided".into());
+    }
+
     // Use a local HashMap for initialization to avoid DashMap overhead
     let mut label_map_local = HashMap::new();
     let next_class_id = Arc::new(AtomicUsize::new(0));
@@ -51,7 +54,7 @@ pub fn process_dataset(
 
         // Pass 1: Gather label vocabulary only
         info!("Pass 1: Gathering label vocabulary...");
-        let all_labels = gather_label_vocabulary(dirname, args)?;
+        let all_labels = gather_label_vocabulary(source_roots, args)?;
         info!("Found {} unique labels.", all_labels.len());
 
         // Sort labels alphabetically for deterministic ID assignment
@@ -67,7 +70,7 @@ pub fn process_dataset(
         // Pass 2: Process files with pre-populated label map
         info!("Pass 2: Processing files with deterministic label mapping...");
         (processed_image_basenames, stats) = process_json_files_streaming(
-            dirname,
+            source_roots,
             args,
             output_dirs,
             &label_map,
@@ -80,7 +83,7 @@ pub fn process_dataset(
         // Single pass mode (existing behavior)
         info!("Processing JSON files in streaming fashion...");
         (processed_image_basenames, stats) = process_json_files_streaming(
-            dirname,
+            source_roots,
             args,
             output_dirs,
             &label_map,
@@ -94,7 +97,7 @@ pub fn process_dataset(
     // Second pass: process background images
     info!("Processing background images...");
     process_background_images(
-        dirname,
+        source_roots,
         args,
         output_dirs,
         &label_map,
@@ -103,7 +106,7 @@ pub fn process_dataset(
     info!("Background image processing complete.");
 
     info!("Creating dataset.yaml file...");
-    if let Err(e) = create_dataset_yaml(dirname, args, &label_map) {
+    if let Err(e) = create_dataset_yaml(&source_roots[0].path, args, &label_map) {
         return Err(format!("Failed to create dataset.yaml: {}", e).into());
     } else {
         info!("Conversion process completed successfully.");
@@ -114,7 +117,7 @@ pub fn process_dataset(
 
 /// Gather all unique labels from JSON files without processing them
 fn gather_label_vocabulary(
-    dirname: &Path,
+    source_roots: &[SourceRoot],
     _args: &Args,
 ) -> Result<std::collections::HashSet<String>, Box<dyn std::error::Error>> {
     use jwalk::WalkDir;
@@ -123,29 +126,37 @@ fn gather_label_vocabulary(
 
     let all_labels: DashSet<String> = DashSet::new();
 
-    // Walk through the directory structure to find JSON files
-    let json_entries = WalkDir::new(dirname)
-        .skip_hidden(false)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            // Skip YOLODataset directories early by comparing directory names directly
-            if e.file_type().is_dir() {
-                if let Some(name) = e.file_name().to_str() {
-                    name != "YOLODataset"
-                } else {
-                    // If we can't convert to str, skip to be safe
-                    false
-                }
-            } else {
-                true
-            }
+    // Walk through each source directory to find JSON files. The walkers must
+    // be created eagerly (collect): jwalk schedules its traversal with
+    // rayon::spawn, and creating a walker from a saturated rayon worker thread
+    // would starve that spawn and make jwalk silently return no entries.
+    let json_walkers: Vec<_> = source_roots
+        .iter()
+        .map(|root| {
+            WalkDir::new(&root.path)
+                .skip_hidden(false)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    // Skip YOLODataset directories early by comparing directory names directly
+                    if e.file_type().is_dir() {
+                        if let Some(name) = e.file_name().to_str() {
+                            name != "YOLODataset"
+                        } else {
+                            // If we can't convert to str, skip to be safe
+                            false
+                        }
+                    } else {
+                        true
+                    }
+                })
+                .filter(|e| {
+                    e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "json")
+                })
+                .map(|e| e.path().to_path_buf())
         })
-        .filter(|e| {
-            e.file_type().is_file() && e.path().extension().is_some_and(|ext| ext == "json")
-        })
-        .map(|e| e.path().to_path_buf())
-        .par_bridge();
+        .collect();
+    let json_entries = json_walkers.into_iter().flatten().par_bridge();
 
     // Process JSON files in parallel to gather labels
     json_entries.for_each(|json_path| {

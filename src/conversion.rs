@@ -6,7 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::config::{Args, Format};
-use crate::types::{ImageAnnotation, Shape, StreamingImageAnnotation};
+use crate::types::{ImageAnnotation, Shape, SourceRoot, StreamingImageAnnotation};
 use crate::utils::{generate_collision_resistant_name, infer_image_format};
 
 /// Configuration for processing a single annotation
@@ -19,7 +19,7 @@ pub struct AnnotationProcessor<'a> {
     pub label_map: &'a dashmap::DashMap<String, usize>,
     pub args: &'a Args,
     pub filename_cache: &'a Arc<DashMap<String, String>>,
-    pub base_dir: &'a Path,
+    pub source_root: &'a SourceRoot,
     pub stats: Option<&'a mut crate::types::ProcessingStats>,
 }
 
@@ -34,12 +34,13 @@ pub fn process_annotation(config: AnnotationProcessor<'_>) -> std::io::Result<()
         label_map,
         args,
         filename_cache,
-        base_dir,
+        source_root,
         stats,
     } = config;
 
-    // Calculate the relative path from the base directory
-    let relative_path = image_path.strip_prefix(base_dir).unwrap_or(image_path);
+    // Calculate the relative path from the source root, qualified to stay
+    // unique when multiple source directories are converted together
+    let relative_path = source_root.key_path(image_path);
 
     // Use the relative path as the cache key
     let cache_key = relative_path.to_string_lossy().to_string();
@@ -58,7 +59,7 @@ pub fn process_annotation(config: AnnotationProcessor<'_>) -> std::io::Result<()
         cached.clone()
     } else {
         // Generate a collision-resistant name using the file stem and relative path
-        let collision_resistant_name = generate_collision_resistant_name(file_stem, relative_path);
+        let collision_resistant_name = generate_collision_resistant_name(file_stem, &relative_path);
         filename_cache.insert(cache_key, collision_resistant_name.clone());
         collision_resistant_name
     };

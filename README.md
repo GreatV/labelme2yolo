@@ -27,7 +27,9 @@ pip install labelme2yolo
 
 ## Options
 
-**-d, --json_dir <JSON_DIR>** Directory containing LabelMe JSON files.
+**-d, --json_dir <JSON_DIR>** Directory containing LabelMe JSON files. Repeat the flag to convert multiple directories in one run (requires `--output_dir`).
+
+**-o, --output_dir <OUTPUT_DIR>** Output directory for the converted dataset [default: `<json_dir>/YOLODataset`]. Required when multiple `--json_dir` values are given.
 
 **--val_size <VAL_SIZE>** Proportion of the dataset to use for validation (between 0.0 and 1.0) [default: 0.2].
 
@@ -80,6 +82,16 @@ This tool will generate dataset labels and images with YOLO format in different 
 /path/to/labelme_json_dir/YOLODataset/images/val/
 /path/to/labelme_json_dir/YOLODataset/dataset.yaml
 ```
+
+### 3. Converting multiple directories into one dataset
+
+Pass `--json_dir` multiple times to combine several source directories. An explicit `--output_dir` is required in this case:
+
+```shell
+labelme2yolo -d /path/to/src-a/ -d /path/to/src-b/ -o /path/to/output/
+```
+
+Files with the same name in different source directories are kept apart automatically.
 
 ## How to build package/wheel
 

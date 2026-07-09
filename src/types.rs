@@ -1,7 +1,47 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
+
+/// A source directory to scan for LabelMe annotations.
+///
+/// `key_prefix` disambiguates cache keys and generated filenames when multiple
+/// source directories are given: identical relative paths under different
+/// roots would otherwise map to the same collision hash and overwrite each
+/// other. It is empty for single-root invocations so generated names stay
+/// identical to earlier releases.
+#[derive(Debug, Clone)]
+pub struct SourceRoot {
+    pub path: PathBuf,
+    pub key_prefix: PathBuf,
+}
+
+impl SourceRoot {
+    /// Build source roots from the directories given on the command line,
+    /// assigning a unique key prefix to each root when more than one is given.
+    pub fn from_dirs(dirs: &[PathBuf]) -> Vec<SourceRoot> {
+        let multi = dirs.len() > 1;
+        dirs.iter()
+            .enumerate()
+            .map(|(index, dir)| SourceRoot {
+                path: dir.clone(),
+                key_prefix: if multi {
+                    PathBuf::from(index.to_string())
+                } else {
+                    PathBuf::new()
+                },
+            })
+            .collect()
+    }
+
+    /// Relative path used as the cache key and collision-hash input for a
+    /// file under this root.
+    pub fn key_path(&self, path: &Path) -> PathBuf {
+        let relative = path.strip_prefix(&self.path).unwrap_or(path);
+        self.key_prefix.join(relative)
+    }
+}
 
 // Supported image formats
 pub const IMG_FORMATS: &[&str] = &[
@@ -175,5 +215,40 @@ impl ProcessingStats {
                 self.skipped_no_image_data
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SourceRoot;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn single_root_key_path_matches_plain_relative_path() {
+        let roots = SourceRoot::from_dirs(&[PathBuf::from("data")]);
+        assert_eq!(roots.len(), 1);
+        assert_eq!(
+            roots[0].key_path(Path::new("data/sub/img.png")),
+            PathBuf::from("sub/img.png")
+        );
+    }
+
+    #[test]
+    fn multi_root_key_paths_differ_for_identical_relative_paths() {
+        let roots = SourceRoot::from_dirs(&[PathBuf::from("src-a"), PathBuf::from("src-b")]);
+        let a = roots[0].key_path(Path::new("src-a/img.png"));
+        let b = roots[1].key_path(Path::new("src-b/img.png"));
+        assert_ne!(a, b);
+        assert_eq!(a, PathBuf::from("0/img.png"));
+        assert_eq!(b, PathBuf::from("1/img.png"));
+    }
+
+    #[test]
+    fn key_path_falls_back_to_full_path_outside_root() {
+        let roots = SourceRoot::from_dirs(&[PathBuf::from("data")]);
+        assert_eq!(
+            roots[0].key_path(Path::new("elsewhere/img.png")),
+            PathBuf::from("elsewhere/img.png")
+        );
     }
 }

@@ -20,6 +20,49 @@ pub fn get_base_output_dir(args: &Args, json_dir_path: &Path, default_subdir: &s
     }
 }
 
+/// Validate the source directories given on the command line and return them
+/// with exact duplicates removed. Requires --output_dir when more than one
+/// directory is given, since the default output location would be ambiguous.
+pub fn resolve_source_dirs(args: &Args) -> Result<Vec<PathBuf>, String> {
+    let mut dirs: Vec<PathBuf> = Vec::with_capacity(args.json_dir.len());
+    let mut canonical_dirs: Vec<PathBuf> = Vec::with_capacity(args.json_dir.len());
+
+    for dir in &args.json_dir {
+        let path = PathBuf::from(dir);
+        if !path.exists() {
+            return Err(format!("The specified json_dir does not exist: {}", dir));
+        }
+        let canonical = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+        if canonical_dirs.contains(&canonical) {
+            log::warn!("Ignoring duplicate json_dir: {}", dir);
+            continue;
+        }
+        canonical_dirs.push(canonical);
+        dirs.push(path);
+    }
+
+    if dirs.len() > 1 && args.output_dir.is_none() {
+        return Err(
+            "--output_dir (-o) is required when multiple json_dir values are given".to_string(),
+        );
+    }
+
+    // Warn about nested roots: files under the inner root would be processed twice
+    for (i, outer) in canonical_dirs.iter().enumerate() {
+        for (j, inner) in canonical_dirs.iter().enumerate() {
+            if i != j && inner.starts_with(outer) {
+                log::warn!(
+                    "json_dir {} is nested inside {}; its files will be processed twice",
+                    dirs[j].display(),
+                    dirs[i].display()
+                );
+            }
+        }
+    }
+
+    Ok(dirs)
+}
+
 /// Helper function to infer image format from image bytes
 pub fn infer_image_format(image_bytes: &[u8]) -> Option<&'static str> {
     if image_bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
