@@ -2,6 +2,12 @@
 name = "labelme2yolo"
 version = "0.4.0"
 edition = "2021"
+description = "Convert LabelMe JSON annotations to YOLO or COCO dataset formats"
+license = "MIT"
+repository = "https://github.com/GreatV/labelme2yolo"
+readme = "README.md"
+keywords = ["labelme", "yolo", "coco", "annotation", "dataset"]
+categories = ["command-line-utilities", "computer-vision"]
 
 [[bin]]
 name = "labelme2yolo"
