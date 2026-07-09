@@ -6,11 +6,11 @@ use std::str::FromStr;
 #[derive(Parser, Debug, Clone)]
 #[command(version, long_about = None)]
 pub struct Args {
-    /// Directory containing LabelMe JSON files
-    #[arg(short = 'd', long = "json_dir")]
-    pub json_dir: String,
+    /// Directory containing LabelMe JSON files (repeat the flag to convert multiple directories)
+    #[arg(short = 'd', long = "json_dir", required = true)]
+    pub json_dir: Vec<String>,
 
-    /// Output directory for converted dataset (default: <json_dir>/YOLODataset or <json_dir>/COCODataset)
+    /// Output directory for converted dataset (default: <json_dir>/YOLODataset or <json_dir>/COCODataset; required when multiple json_dir values are given)
     #[arg(short = 'o', long = "output_dir")]
     pub output_dir: Option<String>,
 
