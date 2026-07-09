@@ -1,10 +1,11 @@
 use clap::Parser;
 use log::{error, info};
+use std::process::ExitCode;
 
 use labelme2yolo::utils::resolve_source_dirs;
 use labelme2yolo::{config::Args, process_coco_dataset, setup_coco_output_directories, SourceRoot};
 
-fn main() {
+fn main() -> ExitCode {
     // Initialize the logger
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let args = Args::parse();
@@ -13,7 +14,7 @@ fn main() {
         Ok(dirs) => dirs,
         Err(e) => {
             error!("{}", e);
-            return;
+            return ExitCode::FAILURE;
         }
     };
     let source_roots = SourceRoot::from_dirs(&dirs);
@@ -25,7 +26,7 @@ fn main() {
         Ok(config) => config,
         Err(e) => {
             error!("Failed to parse COCO configuration: {}", e);
-            return;
+            return ExitCode::FAILURE;
         }
     };
 
@@ -33,10 +34,15 @@ fn main() {
         Ok(output_dirs) => {
             if let Err(e) = process_coco_dataset(&output_dirs, &args, &source_roots, &coco_config) {
                 error!("Failed to process dataset: {}", e);
-            } else {
-                info!("COCO conversion process completed successfully.");
+                return ExitCode::FAILURE;
             }
         }
-        Err(e) => error!("Failed to set up output directories: {}", e),
+        Err(e) => {
+            error!("Failed to set up output directories: {}", e);
+            return ExitCode::FAILURE;
+        }
     }
+
+    info!("COCO conversion process completed successfully.");
+    ExitCode::SUCCESS
 }

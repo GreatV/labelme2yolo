@@ -7,7 +7,10 @@ use std::path::Path;
 
 use labelme2yolo::config::{Format, SegmentationMode};
 use labelme2yolo::utils::resolve_source_dirs;
-use labelme2yolo::{process_dataset, setup_output_directories, Args, SourceRoot};
+use labelme2yolo::{
+    process_coco_dataset, process_dataset, setup_coco_output_directories, setup_output_directories,
+    Args, SourceRoot,
+};
 
 fn make_args(json_dirs: &[&str], output_dir: Option<&str>) -> Args {
     Args {
@@ -144,6 +147,65 @@ fn converts_multiple_dirs_with_identical_file_names() {
         yaml.contains("dog"),
         "dataset.yaml missing 'dog':\n{}",
         yaml
+    );
+}
+
+#[test]
+fn coco_multiple_dirs_keep_identical_file_names_apart() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src_a = tmp.path().join("src-a");
+    let src_b = tmp.path().join("src-b");
+    let out = tmp.path().join("out");
+    fs::create_dir_all(&src_a).unwrap();
+    fs::create_dir_all(&src_b).unwrap();
+
+    write_sample(&src_a, "img", "cat");
+    write_sample(&src_b, "img", "dog");
+
+    let args = make_args(
+        &[src_a.to_str().unwrap(), src_b.to_str().unwrap()],
+        Some(out.to_str().unwrap()),
+    );
+    let coco_config = args.to_coco_config().unwrap();
+    let dirs = resolve_source_dirs(&args).unwrap();
+    let source_roots = SourceRoot::from_dirs(&dirs);
+
+    let output_dirs = setup_coco_output_directories(&args, &source_roots[0].path).unwrap();
+    process_coco_dataset(&output_dirs, &args, &source_roots, &coco_config).unwrap();
+
+    // Both same-named images must exist as distinct files
+    let train_images: Vec<String> = fs::read_dir(out.join("images").join("train"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+        .collect();
+    assert_eq!(train_images.len(), 2, "images: {:?}", train_images);
+
+    // The COCO JSON must reference exactly the file names written to disk
+    let json = fs::read_to_string(out.join("annotations").join("instances_train.json")).unwrap();
+    for name in &train_images {
+        assert!(json.contains(name), "{} missing from COCO JSON", name);
+    }
+}
+
+#[test]
+fn coco_single_dir_keeps_original_file_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    fs::create_dir_all(&src).unwrap();
+    write_sample(&src, "img", "cat");
+
+    let args = make_args(&[src.to_str().unwrap()], None);
+    let coco_config = args.to_coco_config().unwrap();
+    let dirs = resolve_source_dirs(&args).unwrap();
+    let source_roots = SourceRoot::from_dirs(&dirs);
+
+    let output_dirs = setup_coco_output_directories(&args, &source_roots[0].path).unwrap();
+    process_coco_dataset(&output_dirs, &args, &source_roots, &coco_config).unwrap();
+
+    let out = src.join("COCODataset");
+    assert!(
+        out.join("images").join("train").join("img.png").exists(),
+        "single-root COCO output should keep the original basename"
     );
 }
 

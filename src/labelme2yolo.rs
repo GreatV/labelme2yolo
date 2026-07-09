@@ -1,11 +1,12 @@
 use clap::Parser;
 
 use log::{error, info};
+use std::process::ExitCode;
 
 use labelme2yolo::utils::resolve_source_dirs;
 use labelme2yolo::{process_dataset, setup_output_directories, Args, SourceRoot};
 
-fn main() {
+fn main() -> ExitCode {
     // Initialize the logger
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let args = Args::parse();
@@ -14,7 +15,7 @@ fn main() {
         Ok(dirs) => dirs,
         Err(e) => {
             error!("{}", e);
-            return;
+            return ExitCode::FAILURE;
         }
     };
     let source_roots = SourceRoot::from_dirs(&dirs);
@@ -25,8 +26,14 @@ fn main() {
         Ok(output_dirs) => {
             if let Err(e) = process_dataset(&output_dirs, &args, &source_roots) {
                 error!("Failed to process dataset: {}", e);
+                return ExitCode::FAILURE;
             }
         }
-        Err(e) => error!("Failed to set up output directories: {}", e),
+        Err(e) => {
+            error!("Failed to set up output directories: {}", e);
+            return ExitCode::FAILURE;
+        }
     }
+
+    ExitCode::SUCCESS
 }

@@ -18,8 +18,9 @@ use crate::coco::{Annotation, CocoConfig, CocoFile, Image};
 use crate::config::Args;
 use crate::types::{ImageAnnotation, Shape, SourceRoot};
 use crate::utils::{
-    create_io_thread_pool, create_output_directory, get_base_output_dir, infer_image_format,
-    read_and_parse_json, read_and_parse_json_buffered, read_and_parse_json_streaming,
+    create_io_thread_pool, create_output_directory, generate_collision_resistant_name,
+    get_base_output_dir, infer_image_format, read_and_parse_json, read_and_parse_json_buffered,
+    read_and_parse_json_streaming,
 };
 
 /// Struct to hold the paths to the output directories for COCO dataset
@@ -77,7 +78,7 @@ struct ProcessAnnotationParams<'a> {
     next_class_id: &'a Arc<AtomicUsize>,
     coco_config: &'a CocoConfig,
     processed_image_basenames: &'a DashSet<String>,
-    base_dir: &'a Path,
+    source_root: &'a SourceRoot,
     train_data: &'a Arc<Mutex<CocoSplitData>>,
     val_data: &'a Arc<Mutex<CocoSplitData>>,
     test_data: &'a Arc<Mutex<CocoSplitData>>,
@@ -301,7 +302,7 @@ fn process_json_files_for_coco(params: ProcessJsonFilesParams) -> ProcessJsonFil
                     next_class_id,
                     coco_config,
                     processed_image_basenames: &processed_image_basenames,
-                    base_dir: &root.path,
+                    source_root: root,
                     train_data: &train_data,
                     val_data: &val_data,
                     test_data: &test_data,
@@ -322,7 +323,7 @@ fn process_json_files_for_coco(params: ProcessJsonFilesParams) -> ProcessJsonFil
                         next_class_id,
                         coco_config,
                         processed_image_basenames: &processed_image_basenames,
-                        base_dir: &root.path,
+                        source_root: root,
                         train_data: &train_data,
                         val_data: &val_data,
                         test_data: &test_data,
@@ -340,7 +341,7 @@ fn process_json_files_for_coco(params: ProcessJsonFilesParams) -> ProcessJsonFil
                     next_class_id,
                     coco_config,
                     processed_image_basenames: &processed_image_basenames,
-                    base_dir: &root.path,
+                    source_root: root,
                     train_data: &train_data,
                     val_data: &val_data,
                     test_data: &test_data,
@@ -457,6 +458,30 @@ fn process_json_files_for_coco(params: ProcessJsonFilesParams) -> ProcessJsonFil
     ))
 }
 
+/// Output file name for a COCO image: the original basename for single-root
+/// runs (existing behavior), or a root-qualified collision-resistant name when
+/// multiple source directories are converted together, so identical basenames
+/// from different roots do not overwrite each other.
+fn coco_output_file_name(source_root: &SourceRoot, image_path: &Path) -> String {
+    let file_name = image_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown");
+    if source_root.key_prefix.as_os_str().is_empty() {
+        return file_name.to_string();
+    }
+    let file_stem = image_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown");
+    let relative_path = source_root.key_path(image_path);
+    let base = generate_collision_resistant_name(file_stem, &relative_path);
+    match image_path.extension().and_then(|s| s.to_str()) {
+        Some(ext) => format!("{}.{}", base, ext),
+        None => base,
+    }
+}
+
 /// Process a single annotation for COCO conversion
 fn process_annotation_for_coco(params: ProcessAnnotationParams) {
     let ProcessAnnotationParams {
@@ -468,7 +493,7 @@ fn process_annotation_for_coco(params: ProcessAnnotationParams) {
         next_class_id,
         coco_config,
         processed_image_basenames,
-        base_dir,
+        source_root,
         train_data,
         val_data,
         test_data,
@@ -479,7 +504,7 @@ fn process_annotation_for_coco(params: ProcessAnnotationParams) {
     let image_path = json_path
         .parent()
         .map(|parent| parent.join(&annotation.image_path))
-        .unwrap_or_else(|| base_dir.join(&annotation.image_path));
+        .unwrap_or_else(|| source_root.path.join(&annotation.image_path));
 
     // Add labels to the label map if not using a predefined list and not in deterministic mode
     if args.label_list.is_empty() && !args.deterministic_labels {
@@ -521,24 +546,24 @@ fn process_annotation_for_coco(params: ProcessAnnotationParams) {
         }
     };
 
+    // Get the output file name for the image (root-qualified for multi-root runs)
+    let file_name = coco_output_file_name(source_root, &image_path);
+
     // Copy the image file with embedded image data support
-    if let Err(e) =
-        copy_image_for_coco_with_data(&image_path, images_dir, annotation.image_data.as_ref())
-    {
+    if let Err(e) = copy_image_for_coco_with_data(
+        &image_path,
+        images_dir,
+        annotation.image_data.as_ref(),
+        &file_name,
+    ) {
         warn!("Failed to copy image {}: {}", image_path.display(), e);
         return;
     }
 
-    // Get the file name for the image
-    let file_name = image_path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown");
-
     // Create image entry
     let image = Image::new(
         0, // ID will be assigned later
-        file_name.to_string(),
+        file_name.clone(),
         annotation.image_width,
         annotation.image_height,
     );
@@ -581,42 +606,24 @@ fn process_annotation_for_coco(params: ProcessAnnotationParams) {
         }
     }
 
-    // Track processed image basenames
-    processed_image_basenames.insert(file_name.to_string());
+    // Track processed image output names
+    processed_image_basenames.insert(file_name);
 }
 
-/// Copy image file for COCO dataset with embedded image data support
+/// Copy image file for COCO dataset with embedded image data support.
+/// The image is written to `images_dir` as `output_file_name`.
 fn copy_image_for_coco_with_data(
     image_path: &Path,
     images_dir: &Path,
     image_data: Option<&String>,
+    output_file_name: &str,
 ) -> std::io::Result<()> {
     if image_path.exists() {
-        let file_name = image_path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("Invalid file name: {:?}", image_path),
-                )
-            })?;
-
-        let dest_path = images_dir.join(file_name);
+        let dest_path = images_dir.join(output_file_name);
         fs::copy(image_path, dest_path)?;
     } else if let Some(image_data) = image_data {
         if !image_data.is_empty() {
             // Handle missing image file by extracting image_data from JSON
-            let file_name = image_path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .ok_or_else(|| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        format!("Invalid file name: {:?}", image_path),
-                    )
-                })?;
-
             // Infer image format by decoding just the header
             let image_extension = {
                 // Create a cursor to read from the base64 string
@@ -634,7 +641,9 @@ fn copy_image_for_coco_with_data(
             };
 
             // Create the output file with the correct extension
-            let dest_path = images_dir.join(file_name).with_extension(image_extension);
+            let dest_path = images_dir
+                .join(output_file_name)
+                .with_extension(image_extension);
 
             // Decode the full data and stream it to the file
             let mut cursor = std::io::Cursor::new(image_data);
@@ -832,12 +841,12 @@ fn process_background_images_for_coco(
                     }
                 })
                 .filter(|e| e.file_type().is_file())
-                .filter_map(|e| {
+                .filter_map(move |e| {
                     let path = e.path();
                     if let Some(extension) = path.extension() {
                         let ext = extension.to_string_lossy().to_lowercase();
                         if image_extensions.contains(&ext) {
-                            return Some(path.to_path_buf());
+                            return Some((root, path.to_path_buf()));
                         }
                     }
                     None
@@ -863,14 +872,11 @@ fn process_background_images_for_coco(
 
     // Process background images in parallel
     thread_pool.install(|| {
-        image_entries.for_each(|image_path| {
-            let file_name = image_path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("unknown");
+        image_entries.for_each(|(root, image_path)| {
+            let file_name = coco_output_file_name(root, &image_path);
 
             // Check if this image was already processed (has a JSON annotation)
-            if !processed_image_basenames.contains(file_name) {
+            if !processed_image_basenames.contains(&file_name) {
                 // This is a background image, process it
                 let (bg_images, images_dir) = {
                     use std::collections::hash_map::DefaultHasher;
@@ -897,7 +903,9 @@ fn process_background_images_for_coco(
                 };
 
                 // Copy the image file
-                if let Err(e) = copy_image_for_coco_with_data(&image_path, images_dir, None) {
+                if let Err(e) =
+                    copy_image_for_coco_with_data(&image_path, images_dir, None, &file_name)
+                {
                     warn!(
                         "Failed to copy background image {}: {}",
                         image_path.display(),
@@ -919,7 +927,7 @@ fn process_background_images_for_coco(
                     };
 
                     // Create image entry
-                    let image = Image::new(0, file_name.to_string(), image_width, image_height);
+                    let image = Image::new(0, file_name.clone(), image_width, image_height);
 
                     // Add to the appropriate split
                     if let Ok(mut images) = bg_images.lock() {
