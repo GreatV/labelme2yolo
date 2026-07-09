@@ -96,6 +96,10 @@ fn missing_dir_is_rejected_and_duplicates_are_removed() {
     let args = make_args(&["does-not-exist"], None);
     assert!(resolve_source_dirs(&args).is_err());
 
+    // Programmatic use with no directories at all must error, not panic later
+    let args = make_args(&[], None);
+    assert!(resolve_source_dirs(&args).is_err());
+
     let args = make_args(&[src_str, src_str], Some("out"));
     let dirs = resolve_source_dirs(&args).unwrap();
     assert_eq!(dirs.len(), 1);

@@ -41,6 +41,10 @@ pub fn resolve_source_dirs(args: &Args) -> Result<Vec<PathBuf>, String> {
         dirs.push(path);
     }
 
+    if dirs.is_empty() {
+        return Err("At least one json_dir must be provided".to_string());
+    }
+
     if dirs.len() > 1 && args.output_dir.is_none() {
         return Err(
             "--output_dir (-o) is required when multiple json_dir values are given".to_string(),
